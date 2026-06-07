@@ -1,17 +1,20 @@
 import type { Metadata } from "next";
-import { Playfair_Display, DM_Sans } from "next/font/google";
+import { Fraunces, Barlow } from "next/font/google";
 import "./globals.css";
 
-const playfair = Playfair_Display({
+// Fraunces: optical serif with real personality — editorial, authoritative, distinctive
+const fraunces = Fraunces({
   variable: "--font-playfair",
   subsets: ["latin"],
-  weight: ["400", "600", "700", "800"],
+  weight: ["300", "400", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
 });
 
-const dmSans = DM_Sans({
+// Barlow: clean geometric sans, slightly condensed, more character than DM Sans
+const barlow = Barlow({
   variable: "--font-dm-sans",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -25,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${playfair.variable} ${dmSans.variable} h-full`}>
+    <html lang="en" className={`${fraunces.variable} ${barlow.variable} h-full`}>
       <body className="min-h-full flex flex-col font-sans antialiased">{children}</body>
     </html>
   );
