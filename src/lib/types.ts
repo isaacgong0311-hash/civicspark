@@ -9,6 +9,8 @@ export interface Representative {
   contactUrl: string;
   phone?: string;
   twitter?: string;
+  bioguideId?: string;
+  photoUrl?: string;
 }
 
 export interface IssueTopic {
@@ -34,6 +36,10 @@ export interface Bill {
   matchedIssues: string[];
   stage?: BillStage;
   urgency?: "urgent" | "new" | "active";
+  sponsorName?: string;
+  sponsorParty?: string;
+  cosponsors?: number;
+  introducedDate?: string;
 }
 
 export interface BillSummary {
@@ -54,4 +60,16 @@ export interface PassLikelihood {
   percent: number;       // 0–100
   label: string;         // "Unlikely" | "Possible" | "Likely" | "Very Likely"
   rationale: string;     // 1-2 sentence explanation
+}
+
+export interface MemberDetail {
+  bioguideId: string;
+  name: string;
+  party: string;
+  state: string;
+  district?: string;
+  photoUrl?: string;
+  website?: string;
+  sponsoredCount: number;
+  recentBills: Bill[];
 }

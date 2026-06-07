@@ -1,4 +1,4 @@
-import type { Bill, BillStage } from "./types";
+import type { Bill, BillStage, MemberDetail } from "./types";
 import { ISSUE_TOPICS } from "./issues";
 
 const API_BASE = "https://api.congress.gov/v3";
@@ -11,6 +11,9 @@ interface CongressApiBill {
   policyArea?: { name: string };
   latestAction?: { actionDate: string; text: string };
   url: string;
+  sponsors?: Array<{ bioguideId: string; fullName: string; party: string }>;
+  cosponsors?: number;
+  introducedDate?: string;
 }
 
 /* ── Infer legislative stage from action text ────────────────────────────── */
@@ -42,30 +45,36 @@ function matchIssues(bill: { title: string; policyArea?: string }, issueIds: str
   });
 }
 
+/* ── Convert raw API bill to local Bill shape ────────────────────────────── */
+function apiBillToLocal(b: CongressApiBill): Bill {
+  const latestAction = b.latestAction?.text ?? "No recorded action";
+  const latestActionDate = b.latestAction?.actionDate ?? "";
+  return {
+    id: `${b.type}${b.number}-${b.congress}`,
+    congress: b.congress,
+    type: b.type,
+    number: b.number,
+    title: b.title,
+    latestAction,
+    latestActionDate,
+    url: b.url?.replace("api.congress.gov/v3", "www.congress.gov") ?? "https://www.congress.gov",
+    policyArea: b.policyArea?.name,
+    matchedIssues: [],
+    stage: inferStage(latestAction),
+    urgency: inferUrgency(latestActionDate, latestAction),
+    sponsorName: b.sponsors?.[0]?.fullName,
+    sponsorParty: b.sponsors?.[0]?.party,
+    cosponsors: typeof b.cosponsors === "number" ? b.cosponsors : undefined,
+    introducedDate: b.introducedDate,
+  };
+}
+
 async function fetchFromApi(apiKey: string): Promise<Bill[]> {
-  const url = `${API_BASE}/bill?api_key=${apiKey}&limit=40&sort=updateDate+desc`;
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const url = `${API_BASE}/bill?api_key=${apiKey}&limit=40&sort=updateDate+desc&format=json`;
+  const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
   if (!res.ok) throw new Error(`Congress API ${res.status}`);
   const data = (await res.json()) as { bills: CongressApiBill[] };
-
-  return data.bills.map((b) => {
-    const latestAction = b.latestAction?.text ?? "No recorded action";
-    const latestActionDate = b.latestAction?.actionDate ?? "";
-    return {
-      id: `${b.type}${b.number}-${b.congress}`,
-      congress: b.congress,
-      type: b.type,
-      number: b.number,
-      title: b.title,
-      latestAction,
-      latestActionDate,
-      url: b.url?.replace("api.congress.gov/v3", "www.congress.gov") ?? "https://www.congress.gov",
-      policyArea: b.policyArea?.name,
-      matchedIssues: [],
-      stage: inferStage(latestAction),
-      urgency: inferUrgency(latestActionDate, latestAction),
-    };
-  });
+  return data.bills.map(apiBillToLocal);
 }
 
 export async function getRelevantBills(issueIds: string[]): Promise<{ bills: Bill[]; live: boolean }> {
@@ -97,6 +106,105 @@ export async function getRelevantBills(issueIds: string[]): Promise<{ bills: Bil
   return { bills: result.slice(0, 12), live };
 }
 
+/* ── Full-text search via Congress.gov ───────────────────────────────────── */
+export async function searchBills(
+  query: string,
+  limit = 20,
+): Promise<{ bills: Bill[]; live: boolean }> {
+  const apiKey = process.env.CONGRESS_API_KEY;
+  const q = query.trim();
+
+  if (!apiKey || !q) {
+    return {
+      bills: MOCK_BILLS.filter((b) =>
+        b.title.toLowerCase().includes(q.toLowerCase()) ||
+        (b.policyArea ?? "").toLowerCase().includes(q.toLowerCase()),
+      ).slice(0, limit),
+      live: false,
+    };
+  }
+
+  try {
+    const encoded = encodeURIComponent(q);
+    const url = `${API_BASE}/bill?api_key=${apiKey}&query=${encoded}&limit=${Math.min(limit, 40)}&sort=score+desc&format=json`;
+    const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+    if (!res.ok) throw new Error(`Congress API ${res.status}`);
+    const data = (await res.json()) as { bills: CongressApiBill[] };
+    return { bills: (data.bills ?? []).map(apiBillToLocal), live: true };
+  } catch {
+    // Client-side fallback
+    return {
+      bills: MOCK_BILLS.filter((b) =>
+        b.title.toLowerCase().includes(q.toLowerCase()) ||
+        (b.policyArea ?? "").toLowerCase().includes(q.toLowerCase()),
+      ).slice(0, limit),
+      live: false,
+    };
+  }
+}
+
+/* ── Get member profile + recent sponsored legislation ───────────────────── */
+export async function getMemberDetail(bioguideId: string): Promise<MemberDetail | null> {
+  const apiKey = process.env.CONGRESS_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const [memberRes, billsRes] = await Promise.allSettled([
+      fetch(`${API_BASE}/member/${bioguideId}?api_key=${apiKey}&format=json`, {
+        headers: { Accept: "application/json" },
+        next: { revalidate: 3600 }, // cache for 1 hour
+      }),
+      fetch(
+        `${API_BASE}/member/${bioguideId}/sponsored-legislation?api_key=${apiKey}&format=json&limit=6`,
+        {
+          headers: { Accept: "application/json" },
+          next: { revalidate: 3600 },
+        },
+      ),
+    ]);
+
+    if (memberRes.status !== "fulfilled" || !memberRes.value.ok) return null;
+    const memberData = await memberRes.value.json();
+    const m = memberData.member;
+    if (!m) return null;
+
+    let recentBills: Bill[] = [];
+    let sponsoredCount = 0;
+    if (billsRes.status === "fulfilled" && billsRes.value.ok) {
+      const billsData = await billsRes.value.json();
+      const raw: CongressApiBill[] = billsData.sponsoredLegislation ?? [];
+      recentBills = raw.slice(0, 6).map(apiBillToLocal);
+      sponsoredCount = billsData.pagination?.count ?? raw.length;
+    }
+
+    // Determine party abbreviation from history
+    const partyHistory: Array<{ partyAbbreviation: string }> = m.partyHistory ?? [];
+    const latestParty = partyHistory[partyHistory.length - 1];
+    const party =
+      latestParty?.partyAbbreviation ??
+      (m.partyName === "Republican" ? "R" : m.partyName === "Democrat" ? "D" : "I");
+
+    // Get district from most recent term
+    const terms: Array<{ chamber?: string; district?: number; startYear?: number }> =
+      Array.isArray(m.terms) ? m.terms : (m.terms?.item ?? []);
+    const lastTerm = terms[terms.length - 1];
+
+    return {
+      bioguideId,
+      name: m.directOrderName ?? `${m.firstName ?? ""} ${m.lastName ?? ""}`.trim(),
+      party,
+      state: m.state ?? "",
+      district: lastTerm?.district != null ? String(lastTerm.district) : undefined,
+      photoUrl: m.depiction?.imageUrl,
+      website: m.officialWebsiteUrl,
+      sponsoredCount,
+      recentBills,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const MOCK_BILLS: Bill[] = [
   {
     id: "hr1234-119", congress: 119, type: "HR", number: "1234",
@@ -105,6 +213,8 @@ export const MOCK_BILLS: Bill[] = [
     latestActionDate: "2026-04-12", url: "https://www.congress.gov",
     policyArea: "Housing and Community Development", matchedIssues: [],
     stage: 2, urgency: "active",
+    sponsorName: "Rep. Alexandria Ocasio-Cortez", sponsorParty: "D", cosponsors: 28,
+    introducedDate: "2026-04-01",
   },
   {
     id: "s567-119", congress: 119, type: "S", number: "567",
@@ -113,6 +223,8 @@ export const MOCK_BILLS: Bill[] = [
     latestActionDate: "2026-05-02", url: "https://www.congress.gov",
     policyArea: "Environmental Protection", matchedIssues: [],
     stage: 4, urgency: "urgent",
+    sponsorName: "Sen. Amy Klobuchar", sponsorParty: "D", cosponsors: 41,
+    introducedDate: "2026-03-10",
   },
   {
     id: "hr890-119", congress: 119, type: "HR", number: "890",
@@ -121,6 +233,8 @@ export const MOCK_BILLS: Bill[] = [
     latestActionDate: "2026-03-28", url: "https://www.congress.gov",
     policyArea: "Education", matchedIssues: [],
     stage: 3, urgency: "active",
+    sponsorName: "Rep. Bobby Scott", sponsorParty: "D", cosponsors: 15,
+    introducedDate: "2026-02-14",
   },
   {
     id: "hr2100-119", congress: 119, type: "HR", number: "2100",
@@ -129,6 +243,8 @@ export const MOCK_BILLS: Bill[] = [
     latestActionDate: "2026-05-20", url: "https://www.congress.gov",
     policyArea: "Health", matchedIssues: [],
     stage: 2, urgency: "new",
+    sponsorName: "Rep. Grace Meng", sponsorParty: "D", cosponsors: 9,
+    introducedDate: "2026-05-12",
   },
   {
     id: "s1450-119", congress: 119, type: "S", number: "1450",
@@ -137,6 +253,8 @@ export const MOCK_BILLS: Bill[] = [
     latestActionDate: "2026-05-28", url: "https://www.congress.gov",
     policyArea: "Science, Technology, Communications", matchedIssues: [],
     stage: 2, urgency: "new",
+    sponsorName: "Sen. Maria Cantwell", sponsorParty: "D", cosponsors: 6,
+    introducedDate: "2026-05-20",
   },
   {
     id: "hr3300-119", congress: 119, type: "HR", number: "3300",
@@ -145,6 +263,8 @@ export const MOCK_BILLS: Bill[] = [
     latestActionDate: "2026-05-08", url: "https://www.congress.gov",
     policyArea: "Taxation", matchedIssues: [],
     stage: 3, urgency: "urgent",
+    sponsorName: "Rep. Kevin Brady", sponsorParty: "R", cosponsors: 34,
+    introducedDate: "2026-03-22",
   },
   {
     id: "hr775-119", congress: 119, type: "HR", number: "775",
@@ -153,6 +273,8 @@ export const MOCK_BILLS: Bill[] = [
     latestActionDate: "2026-04-19", url: "https://www.congress.gov",
     policyArea: "Armed Forces and National Security", matchedIssues: [],
     stage: 4, urgency: "urgent",
+    sponsorName: "Rep. Mark Takano", sponsorParty: "D", cosponsors: 72,
+    introducedDate: "2026-02-01",
   },
   {
     id: "hr4040-119", congress: 119, type: "HR", number: "4040",
@@ -161,5 +283,7 @@ export const MOCK_BILLS: Bill[] = [
     latestActionDate: "2026-05-20", url: "https://www.congress.gov",
     policyArea: "Environmental Protection", matchedIssues: [],
     stage: 2, urgency: "new",
+    sponsorName: "Rep. Kim Schrier", sponsorParty: "D", cosponsors: 12,
+    introducedDate: "2026-05-15",
   },
 ];

@@ -6,5 +6,6 @@ export async function POST(req: Request) {
   if (!zip || typeof zip !== "string" || !/^\d{5}$/.test(zip.trim())) {
     return NextResponse.json({ error: "Enter a valid 5-digit ZIP code." }, { status: 400 });
   }
-  return NextResponse.json(lookupByZip(zip));
+  const result = await lookupByZip(zip);
+  return NextResponse.json(result);
 }

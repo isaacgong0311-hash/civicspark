@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo, type ElementType } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, type ElementType } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, X, ChevronDown, ExternalLink, ArrowRight,
   Loader2, Mail, Phone, Share2, ThumbsUp, ThumbsDown,
   Check, Copy, BookOpen, BarChart2, Flame, Sparkles,
+  Star, Users, Calendar,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import type { Bill, BillSummary, PassLikelihood, ProsCons, Representative } from "@/lib/types";
@@ -44,8 +45,22 @@ function StageBar({ stage }: { stage: number }) {
   );
 }
 
+/* ── Party color ─────────────────────────────────────────────────────────── */
+function partyDot(party?: string) {
+  if (party === "R") return "#ef4444";
+  if (party === "D") return "#3b82f6";
+  return "#94a3b8";
+}
+
 /* ── Bill Card ───────────────────────────────────────────────────────────── */
-function BillCard({ bill, onAction }: { bill: Bill; onAction: (b: Bill) => void }) {
+function BillCard({
+  bill, onAction, starred, onStar,
+}: {
+  bill: Bill;
+  onAction: (b: Bill) => void;
+  starred: boolean;
+  onStar: (id: string) => void;
+}) {
   const isNew = bill.urgency === "new";
   const isUrgent = bill.urgency === "urgent";
   const chamber = bill.type.startsWith("S") ? "Senate" : "House";
@@ -55,10 +70,13 @@ function BillCard({ bill, onAction }: { bill: Bill; onAction: (b: Bill) => void 
       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
       style={{
         background: "white", borderRadius: 12, padding: "18px 20px",
-        border: "1.5px solid #e6e2d8", marginBottom: 10,
-        boxShadow: "0 1px 4px rgba(13,31,60,0.04)",
+        border: `1.5px solid ${starred ? "#e8c96a" : "#e6e2d8"}`,
+        marginBottom: 10,
+        boxShadow: starred
+          ? "0 2px 8px rgba(184,131,14,0.10)"
+          : "0 1px 4px rgba(13,31,60,0.04)",
       }}
-      whileHover={{ borderColor: "#c8d8f0", boxShadow: "0 4px 16px rgba(13,31,60,0.08)" }}
+      whileHover={{ borderColor: starred ? "#d4a030" : "#c8d8f0", boxShadow: "0 4px 16px rgba(13,31,60,0.08)" }}
       transition={{ duration: 0.15 }}
     >
       {/* Top row */}
@@ -73,28 +91,73 @@ function BillCard({ bill, onAction }: { bill: Bill; onAction: (b: Bill) => void 
           <span style={{ fontSize: 11.5, color: "#7a8699", fontFamily: "var(--font-dm-sans)" }}>
             {chamber}
           </span>
+          {bill.cosponsors != null && bill.cosponsors > 0 && (
+            <span style={{
+              fontSize: 10.5, color: "#7a8699", fontFamily: "var(--font-dm-sans)",
+              display: "flex", alignItems: "center", gap: 3,
+            }}>
+              <Users size={10} strokeWidth={2} />
+              {bill.cosponsors} cosponsor{bill.cosponsors !== 1 ? "s" : ""}
+            </span>
+          )}
         </div>
-        {(isNew || isUrgent) && (
-          <span style={{
-            fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 5,
-            letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 3,
-            background: isUrgent ? "#fef2f2" : "#f0fdf4",
-            color: isUrgent ? "#b91c1c" : "#15803d",
-            border: `1px solid ${isUrgent ? "#fca5a5" : "#86efac"}`,
-          }}>
-            {isUrgent ? <Flame size={9} strokeWidth={2.5} /> : <Sparkles size={9} strokeWidth={2.5} />}
-            {isUrgent ? "URGENT" : "NEW"}
-          </span>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {(isNew || isUrgent) && (
+            <span style={{
+              fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 5,
+              letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 3,
+              background: isUrgent ? "#fef2f2" : "#f0fdf4",
+              color: isUrgent ? "#b91c1c" : "#15803d",
+              border: `1px solid ${isUrgent ? "#fca5a5" : "#86efac"}`,
+            }}>
+              {isUrgent ? <Flame size={9} strokeWidth={2.5} /> : <Sparkles size={9} strokeWidth={2.5} />}
+              {isUrgent ? "URGENT" : "NEW"}
+            </span>
+          )}
+          {/* Star / watchlist button */}
+          <motion.button
+            onClick={e => { e.stopPropagation(); onStar(bill.id); }}
+            title={starred ? "Remove from watchlist" : "Save to watchlist"}
+            whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: 3, color: starred ? "#b8830e" : "#c9d1de",
+            }}
+          >
+            <Star size={15} fill={starred ? "#b8830e" : "none"} strokeWidth={2} />
+          </motion.button>
+        </div>
       </div>
 
       {/* Title */}
       <p style={{
         fontSize: 14, fontWeight: 700, color: "#0d1f3c", lineHeight: 1.45,
-        marginBottom: 6, fontFamily: "var(--font-dm-sans)",
+        marginBottom: 4, fontFamily: "var(--font-dm-sans)",
       }}>
         {bill.title}
       </p>
+
+      {/* Sponsor line */}
+      {bill.sponsorName && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 5,
+          marginBottom: 6, fontSize: 11.5,
+          fontFamily: "var(--font-dm-sans)",
+        }}>
+          <div style={{
+            width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+            background: partyDot(bill.sponsorParty),
+          }} />
+          <span style={{ color: "#7a8699" }}>Sponsored by</span>
+          <span style={{ color: "#334155", fontWeight: 600 }}>{bill.sponsorName}</span>
+          {bill.introducedDate && (
+            <span style={{ color: "#9ba8ba", display: "flex", alignItems: "center", gap: 3, marginLeft: 4 }}>
+              <Calendar size={9} strokeWidth={2} />
+              {bill.introducedDate}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Latest action */}
       <p style={{ fontSize: 12, color: "#7a8699", marginBottom: 14, lineHeight: 1.5,
@@ -322,6 +385,17 @@ function ActionDrawer({
                 color: "white", lineHeight: 1.4, margin: 0, maxWidth: 380 }}>
                 {bill.title}
               </p>
+              {bill.sponsorName && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: partyDot(bill.sponsorParty) }} />
+                  <span style={{ fontSize: 11, color: "#8da4c4" }}>{bill.sponsorName}</span>
+                  {bill.cosponsors != null && bill.cosponsors > 0 && (
+                    <span style={{ fontSize: 11, color: "#6b84a0", display: "flex", alignItems: "center", gap: 3 }}>
+                      · <Users size={9} strokeWidth={2} /> {bill.cosponsors} cosponsors
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <button onClick={onClose} aria-label="Close"
               style={{ background: "rgba(255,255,255,0.08)", border: "none", cursor: "pointer",
@@ -425,7 +499,7 @@ function ActionDrawer({
                 style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
                 {/* Rep selector */}
-                {reps.length > 0 && (
+                {reps.length > 0 ? (
                   <div>
                     <Label>Contact</Label>
                     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -475,6 +549,17 @@ function ActionDrawer({
                         );
                       })}
                     </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: "14px 16px", borderRadius: 10, background: "#fdf3d7",
+                    border: "1.5px solid #e8c96a", fontSize: 13, lineHeight: 1.6 }}>
+                    <p style={{ margin: 0, color: "#6b4f0a" }}>
+                      <strong style={{ color: "#b8830e" }}>Find your representatives first.</strong>{" "}
+                      <a href="/representatives" style={{ color: "#1e4080", fontWeight: 600 }}>
+                        Enter your ZIP code →
+                      </a>{" "}
+                      to see who represents you and contact them directly.
+                    </p>
                   </div>
                 )}
 
@@ -600,7 +685,7 @@ function ActionDrawer({
                         </div>
                         <motion.button
                           onClick={async () => {
-                            const text = `${bill.type} ${bill.number} — ${bill.title}\n\n${bill.latestAction}\n\nLearn more: https://civicspark.vercel.app`;
+                            const text = `${bill.type} ${bill.number} — ${bill.title}\n\n${bill.latestAction}\n\nLearn more: https://civicspark.vercel.app/bills`;
                             await navigator.clipboard.writeText(text);
                             setCopied(true);
                             setTimeout(() => setCopied(false), 2000);
@@ -688,21 +773,30 @@ const POLICY_ICONS: Record<string, string> = {
   "Immigration": "🗺️",
   "Crime and Law Enforcement": "⚖️",
   "Social Welfare": "🤝",
+  "Finance and Financial Sector": "🏦",
+  "Government Operations and Politics": "🏛️",
+  "International Affairs": "🌐",
+  "Labor and Employment": "👷",
 };
 
-type SortOption = "recent" | "stage-asc" | "stage-desc";
+type SortOption = "recent" | "stage-asc" | "stage-desc" | "cosponsors";
 
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([]);
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<Bill[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const [chamber, setChamber] = useState<"all" | "house" | "senate">("all");
   const [stages, setStages] = useState<Set<number>>(new Set());
   const [policies, setPolicies] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortOption>("recent");
   const [activeBill, setActiveBill] = useState<Bill | null>(null);
   const [reps, setReps] = useState<Representative[]>([]);
+  const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
+  const [showWatchlist, setShowWatchlist] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch("/api/bills/all")
@@ -710,7 +804,7 @@ export default function BillsPage() {
       .then(d => { setBills(d.bills); setLive(d.live); })
       .finally(() => setLoading(false));
 
-    // Load reps from sessionStorage if available
+    // Load reps from sessionStorage
     try {
       const saved = sessionStorage.getItem("civicspark_reps");
       if (saved) {
@@ -718,9 +812,48 @@ export default function BillsPage() {
         setReps(d.representatives ?? []);
       }
     } catch { /* ignore */ }
+
+    // Load watchlist from localStorage
+    try {
+      const wl = localStorage.getItem("civicspark_watchlist");
+      if (wl) setWatchlist(new Set(JSON.parse(wl)));
+    } catch { /* ignore */ }
   }, []);
 
-  // Compute policy area counts
+  // Debounced server-side search
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+
+    if (search.length >= 3) {
+      setSearching(true);
+      searchTimerRef.current = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/bills/search?q=${encodeURIComponent(search)}&limit=30`);
+          const d = await res.json();
+          setSearchResults(d.bills ?? []);
+          if (d.live) setLive(true);
+        } catch { /* ignore */ } finally {
+          setSearching(false);
+        }
+      }, 500);
+    } else {
+      setSearchResults(null);
+      setSearching(false);
+    }
+
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [search]);
+
+  const toggleWatchlist = useCallback((id: string) => {
+    setWatchlist(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      try { localStorage.setItem("civicspark_watchlist", JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  // Compute policy area counts from the base pool
   const policyAreas = useMemo(() => {
     const map = new Map<string, number>();
     bills.forEach(b => {
@@ -729,10 +862,18 @@ export default function BillsPage() {
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
   }, [bills]);
 
+  // Determine base pool: server search results, watchlist, or full bill list
+  const basePool = useMemo(() => {
+    if (showWatchlist) return bills.filter(b => watchlist.has(b.id));
+    if (searchResults !== null) return searchResults;
+    return bills;
+  }, [bills, showWatchlist, searchResults, watchlist]);
+
   // Filter + sort
   const filtered = useMemo(() => {
-    let result = bills.filter(b => {
-      if (search) {
+    let result = basePool.filter(b => {
+      // Client-side text filter only when NOT using server search results
+      if (search && searchResults === null && !showWatchlist) {
         const q = search.toLowerCase();
         if (!b.title.toLowerCase().includes(q) &&
             !`${b.type} ${b.number}`.toLowerCase().includes(q) &&
@@ -746,8 +887,9 @@ export default function BillsPage() {
     });
     if (sort === "stage-asc") result = [...result].sort((a, b) => (a.stage ?? 1) - (b.stage ?? 1));
     if (sort === "stage-desc") result = [...result].sort((a, b) => (b.stage ?? 1) - (a.stage ?? 1));
+    if (sort === "cosponsors") result = [...result].sort((a, b) => (b.cosponsors ?? 0) - (a.cosponsors ?? 0));
     return result;
-  }, [bills, search, chamber, stages, policies, sort]);
+  }, [basePool, search, searchResults, showWatchlist, chamber, stages, policies, sort]);
 
   function toggleStage(s: number) {
     setStages(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
@@ -788,14 +930,32 @@ export default function BillsPage() {
                 {loading ? "Loading…" : `${bills.length} bills tracked`}
               </span>
             </div>
-            <button
-              onClick={() => activeBill ? undefined : setActiveBill(filtered[0] ?? null)}
-              style={{ padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 700,
-                border: "none", cursor: "pointer", background: "#b8830e", color: "white",
-                fontFamily: "var(--font-dm-sans)", display: "flex", alignItems: "center", gap: 6,
-                boxShadow: "0 2px 10px rgba(184,131,14,0.3)" }}>
-              Take Action →
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              {/* Watchlist toggle */}
+              <motion.button
+                onClick={() => { setShowWatchlist(v => !v); setSearch(""); setSearchResults(null); }}
+                style={{
+                  padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700,
+                  border: `1.5px solid ${showWatchlist ? "#e8c96a" : "rgba(255,255,255,0.18)"}`,
+                  cursor: "pointer",
+                  background: showWatchlist ? "rgba(184,131,14,0.15)" : "transparent",
+                  color: showWatchlist ? "#fde68a" : "#8da4c4",
+                  fontFamily: "var(--font-dm-sans)", display: "flex", alignItems: "center", gap: 6,
+                }}
+                whileHover={{ borderColor: "#e8c96a", color: "#fde68a" }} whileTap={{ scale: 0.97 }}
+              >
+                <Star size={13} fill={showWatchlist ? "#fde68a" : "none"} strokeWidth={2} />
+                Watchlist {watchlist.size > 0 && `(${watchlist.size})`}
+              </motion.button>
+              <motion.button
+                onClick={() => setActiveBill(filtered[0] ?? null)}
+                style={{ padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 700,
+                  border: "none", cursor: "pointer", background: "#b8830e", color: "white",
+                  fontFamily: "var(--font-dm-sans)", display: "flex", alignItems: "center", gap: 6,
+                  boxShadow: "0 2px 10px rgba(184,131,14,0.3)" }}>
+                Take Action →
+              </motion.button>
+            </div>
           </div>
         </div>
       </div>
@@ -804,19 +964,33 @@ export default function BillsPage() {
       <div style={{ background: "white", borderBottom: "1px solid #e6e2d8", padding: "0 28px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 0" }}>
-            <Search size={16} color="#9ba8ba" strokeWidth={2} style={{ flexShrink: 0 }} />
+            {searching
+              ? <Loader2 size={16} color="#9ba8ba" strokeWidth={2} style={{ flexShrink: 0, animation: "spin 1s linear infinite" }} />
+              : <Search size={16} color="#9ba8ba" strokeWidth={2} style={{ flexShrink: 0 }} />
+            }
             <input
               type="text" value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search by title, bill number, sponsor, or policy area…"
+              onChange={e => { setSearch(e.target.value); if (showWatchlist) setShowWatchlist(false); }}
+              placeholder="Search all bills by title, bill number, or policy area — powered by Congress.gov"
               style={{ flex: 1, fontSize: 14, border: "none", outline: "none", background: "transparent",
                 color: "#0d1f3c", fontFamily: "var(--font-dm-sans)" }}
             />
             {search && (
-              <button onClick={() => setSearch("")}
+              <button onClick={() => { setSearch(""); setSearchResults(null); }}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#9ba8ba" }}>
                 <X size={14} strokeWidth={2} />
               </button>
+            )}
+            {search.length > 0 && search.length < 3 && (
+              <span style={{ fontSize: 11, color: "#9ba8ba", fontFamily: "var(--font-dm-sans)", whiteSpace: "nowrap" }}>
+                Type {3 - search.length} more…
+              </span>
+            )}
+            {searchResults !== null && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#1e4080",
+                fontFamily: "var(--font-dm-sans)", whiteSpace: "nowrap" }}>
+                Congress.gov ✓
+              </span>
             )}
           </div>
         </div>
@@ -889,10 +1063,24 @@ export default function BillsPage() {
         {/* Bill list */}
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: "#334155",
-              fontFamily: "var(--font-dm-sans)" }}>
-              {loading ? "Loading bills…" : `${filtered.length} result${filtered.length !== 1 ? "s" : ""}`}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: "#334155",
+                fontFamily: "var(--font-dm-sans)" }}>
+                {loading ? "Loading bills…" : showWatchlist
+                  ? `${filtered.length} saved bill${filtered.length !== 1 ? "s" : ""}`
+                  : searchResults !== null
+                    ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""} from Congress.gov`
+                    : `${filtered.length} result${filtered.length !== 1 ? "s" : ""}`
+                }
+              </span>
+              {showWatchlist && (
+                <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99,
+                  background: "#fdf3d7", color: "#b8830e", border: "1px solid #e8c96a",
+                  fontWeight: 600, fontFamily: "var(--font-dm-sans)" }}>
+                  ★ Watchlist
+                </span>
+              )}
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 12, color: "#7a8699", fontFamily: "var(--font-dm-sans)" }}>Sort:</span>
               <div style={{ position: "relative" }}>
@@ -903,6 +1091,7 @@ export default function BillsPage() {
                   <option value="recent">Most Recent</option>
                   <option value="stage-desc">Most Advanced</option>
                   <option value="stage-asc">Earliest Stage</option>
+                  <option value="cosponsors">Most Cosponsors</option>
                 </select>
                 <ChevronDown size={13} strokeWidth={2} color="#7a8699"
                   style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
@@ -913,8 +1102,15 @@ export default function BillsPage() {
           {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {[1,2,3,4,5].map(i => (
-                <div key={i} className="skeleton" style={{ height: 140, borderRadius: 12 }} />
+                <div key={i} className="skeleton" style={{ height: 160, borderRadius: 12 }} />
               ))}
+            </div>
+          ) : showWatchlist && filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 20px", color: "#7a8699",
+              fontFamily: "var(--font-dm-sans)" }}>
+              <Star size={36} strokeWidth={1.5} color="#d1d9e6" style={{ margin: "0 auto 16px" }} />
+              <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Your watchlist is empty</p>
+              <p style={{ fontSize: 13 }}>Click the ★ on any bill to save it here for quick access.</p>
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 20px", color: "#7a8699",
@@ -924,7 +1120,13 @@ export default function BillsPage() {
             </div>
           ) : (
             filtered.map(bill => (
-              <BillCard key={bill.id} bill={bill} onAction={setActiveBill} />
+              <BillCard
+                key={bill.id}
+                bill={bill}
+                onAction={setActiveBill}
+                starred={watchlist.has(bill.id)}
+                onStar={toggleWatchlist}
+              />
             ))
           )}
         </div>
