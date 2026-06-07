@@ -84,6 +84,11 @@ export async function getRelevantBills(issueIds: string[]): Promise<{ bills: Bil
     pool = MOCK_BILLS;
   }
 
+  // If no issues requested, return the full pool (bills browser mode)
+  if (issueIds.length === 0) {
+    return { bills: pool.slice(0, 20), live };
+  }
+
   const matched = pool
     .map((b) => ({ ...b, matchedIssues: matchIssues(b, issueIds) }))
     .filter((b) => b.matchedIssues.length > 0);
