@@ -42,3 +42,16 @@ export interface BillSummary {
   districtImpact: string;
   stance: "supports" | "opposes" | "neutral";
 }
+
+export interface ProsCons {
+  pros: string[];
+  cons: string[];
+  supporterView: string;
+  opposerView: string;
+}
+
+export interface PassLikelihood {
+  percent: number;       // 0–100
+  label: string;         // "Unlikely" | "Possible" | "Likely" | "Very Likely"
+  rationale: string;     // 1-2 sentence explanation
+}

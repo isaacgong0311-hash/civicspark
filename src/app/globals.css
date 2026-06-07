@@ -5,19 +5,66 @@
   --font-display: var(--font-playfair);
 }
 
+/* ── Design tokens (light) ───────────────────────────────────────────────── */
+:root {
+  --bg:          #f4f2ee;
+  --surface:     #ffffff;
+  --surface2:    #faf9f6;
+  --border:      #e6e2d8;
+  --border2:     #ede9df;
+  --navy:        #0d1f3c;
+  --navy-mid:    #1e4080;
+  --navy-light:  #dce8f8;
+  --gold:        #b8830e;
+  --gold-light:  #fdf3d7;
+  --gold-border: #e8c96a;
+  --muted:       #7a8699;
+  --text:        #0d1f3c;
+  --text2:       #334155;
+  --orb-a:       rgba(30,64,128,0.09);
+  --orb-b:       rgba(184,131,14,0.08);
+  --skeleton-a:  #e4e1d9;
+  --skeleton-b:  #edeae2;
+  --tab-bg:      #f1ede5;
+}
+
+/* ── Dark mode tokens ────────────────────────────────────────────────────── */
+html.dark {
+  --bg:          #0d1117;
+  --surface:     #161b22;
+  --surface2:    #1c2333;
+  --border:      #30363d;
+  --border2:     #21262d;
+  --navy:        #a8c4f0;
+  --navy-mid:    #79a6e8;
+  --navy-light:  #1a2744;
+  --gold:        #d4a030;
+  --gold-light:  #1e1507;
+  --gold-border: #6b5000;
+  --muted:       #8b949e;
+  --text:        #e6edf3;
+  --text2:       #adbac7;
+  --orb-a:       rgba(79,139,232,0.06);
+  --orb-b:       rgba(212,160,48,0.06);
+  --skeleton-a:  #21262d;
+  --skeleton-b:  #2d333b;
+  --tab-bg:      #21262d;
+}
+
 /* ── Reset / base ────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
-  background: #f4f2ee;
-  color: #0d1f3c;
+  background: var(--bg);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
+  transition: background 0.3s, color 0.3s;
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #c5cfe0; border-radius: 99px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
 /* ── Skeleton shimmer ────────────────────────────────────────────────────── */
 @keyframes shimmer {
@@ -25,17 +72,17 @@ body {
   to   { background-position:  600px 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, #e4e1d9 25%, #edeae2 50%, #e4e1d9 75%);
+  background: linear-gradient(90deg, var(--skeleton-a) 25%, var(--skeleton-b) 50%, var(--skeleton-a) 75%);
   background-size: 1200px 100%;
   animation: shimmer 1.6s infinite linear;
   border-radius: 5px;
 }
 
-/* ── Slow ambient float ──────────────────────────────────────────────────── */
+/* ── Ambient float ───────────────────────────────────────────────────────── */
 @keyframes drift-a {
   0%,100% { transform: translate(0,0) scale(1); }
   40%     { transform: translate(40px,-30px) scale(1.06); }
-  70%     { transform: translate(-20px, 20px) scale(0.96); }
+  70%     { transform: translate(-20px,20px) scale(0.96); }
 }
 @keyframes drift-b {
   0%,100% { transform: translate(0,0) scale(1); }
@@ -52,8 +99,27 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+html.dark .text-gradient {
+  background: linear-gradient(130deg, #79a6e8 0%, #a8c4f0 55%, #d4a030 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
 
-/* ── Letter fade-in typewriter feel ─────────────────────────────────────── */
+/* ── Focus ring (accessibility) ──────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--navy-mid);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── Likelihood meter fill ───────────────────────────────────────────────── */
+@keyframes fillMeter {
+  from { width: 0%; }
+}
+.meter-fill { animation: fillMeter 1s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* ── Prose for pros/cons ─────────────────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
