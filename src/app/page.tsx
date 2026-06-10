@@ -3,13 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { MapPin, ArrowRight, Shield, Zap, Database, ChevronRight } from "lucide-react";
+import {
+  MapPin, ArrowRight, Shield, Zap, Database,
+  ChevronRight, TrendingUp, Users, MessageSquare,
+} from "lucide-react";
 import Navbar from "@/components/Navbar";
 import type { Bill } from "@/lib/types";
 import { MOCK_BILLS } from "@/lib/congress";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 const STAGE_LABELS = ["Intro", "Cmte", "Floor", "Passed", "Law"];
-const STAGE_COLORS = ["#4b6bab", "#2d5fa6", "#1e4080", "#b8830e", "#15803d"];
 
 function MiniStageBar({ stage }: { stage: number }) {
   return (
@@ -48,7 +51,7 @@ function FeaturedBillCard({ bill }: { bill: Bill }) {
   return (
     <motion.div
       whileHover={{ y: -2, boxShadow: "0 8px 30px rgba(13,31,60,0.12)" }}
-      onClick={() => router.push(`/bills?highlight=${bill.id}`)}
+      onClick={() => router.push(`/bills`)}
       style={{
         background: "white", borderRadius: 14, padding: "18px 20px",
         border: "1.5px solid #e6e2d8", cursor: "pointer",
@@ -105,6 +108,7 @@ function FeaturedBillCard({ bill }: { bill: Bill }) {
 
 export default function LandingPage() {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [zip, setZip] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -121,7 +125,6 @@ export default function LandingPage() {
         body: JSON.stringify({ zip: zip.trim() }),
       });
       const d = await r.json();
-      // Store reps in sessionStorage, navigate to representatives page
       sessionStorage.setItem("civicspark_reps", JSON.stringify(d));
       router.push(`/representatives?zip=${zip.trim()}`);
     } catch {
@@ -131,7 +134,6 @@ export default function LandingPage() {
     }
   }
 
-  // Show 4 featured bills from mock data for the preview
   const featured = MOCK_BILLS.slice(0, 4);
 
   return (
@@ -141,7 +143,8 @@ export default function LandingPage() {
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section style={{
         background: "linear-gradient(160deg, #060e1f 0%, #0d1f3c 60%, #0f2548 100%)",
-        padding: "72px 28px 80px", position: "relative", overflow: "hidden",
+        padding: isMobile ? "48px 20px 56px" : "72px 28px 80px",
+        position: "relative", overflow: "hidden",
       }}>
         {/* Ambient orbs */}
         <div style={{
@@ -157,7 +160,10 @@ export default function LandingPage() {
 
         <div style={{
           maxWidth: 1200, margin: "0 auto", position: "relative", zIndex: 1,
-          display: "grid", gridTemplateColumns: "1fr auto", gap: 64, alignItems: "center",
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "1fr auto",
+          gap: isMobile ? 40 : 64,
+          alignItems: "center",
         }}>
           {/* Left copy */}
           <motion.div
@@ -178,28 +184,29 @@ export default function LandingPage() {
             </div>
 
             <h1 style={{
-              fontFamily: "var(--font-playfair)", fontSize: "clamp(40px, 5vw, 64px)",
+              fontFamily: "var(--font-playfair)", fontSize: isMobile ? "clamp(34px, 8vw, 48px)" : "clamp(40px, 5vw, 64px)",
               fontWeight: 700, color: "white", lineHeight: 1.1, marginBottom: 16,
             }}>
               Know what Congress<br />is voting on.
             </h1>
             <h2 style={{
-              fontFamily: "var(--font-playfair)", fontSize: "clamp(36px, 4.5vw, 58px)",
+              fontFamily: "var(--font-playfair)",
+              fontSize: isMobile ? "clamp(30px, 7vw, 44px)" : "clamp(36px, 4.5vw, 58px)",
               fontWeight: 700, color: "#b8830e", lineHeight: 1.1, marginBottom: 28,
               fontStyle: "italic",
             }}>
               Do something about it.
             </h2>
             <p style={{
-              fontSize: 17, color: "#8da4c4", lineHeight: 1.7, maxWidth: 480,
-              fontFamily: "var(--font-dm-sans)", marginBottom: 32,
+              fontSize: isMobile ? 15 : 17, color: "#8da4c4", lineHeight: 1.7,
+              maxWidth: 480, fontFamily: "var(--font-dm-sans)", marginBottom: 32,
             }}>
-              CivicSpark pulls live bills from Congress.gov, explains them in plain English,
-              and connects you to the three federal representatives who vote on your behalf.
-              Enter a ZIP code to get started.
+              CivicSpark pulls live bills from Congress.gov, explains them in plain English
+              with AI, and connects you to the three federal representatives who vote on
+              your behalf — all in under 60 seconds.
             </p>
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              {["Nonpartisan", "Live from Congress.gov", "All 50 states"].map(label => (
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              {["Nonpartisan", "Live Congress.gov data", "AI-powered summaries"].map(label => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 7,
                   fontSize: 13, color: "#8da4c4", fontFamily: "var(--font-dm-sans)", fontWeight: 500 }}>
                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#b8830e", flexShrink: 0 }} />
@@ -215,7 +222,10 @@ export default function LandingPage() {
             transition={{ duration: 0.6, delay: 0.15, ease: "easeOut" }}
             style={{
               background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)",
-              borderRadius: 20, padding: "32px 28px", minWidth: 340, maxWidth: 380,
+              borderRadius: 20, padding: "32px 28px",
+              width: isMobile ? "100%" : undefined,
+              minWidth: isMobile ? undefined : 340,
+              maxWidth: isMobile ? undefined : 380,
               backdropFilter: "blur(12px)",
             }}
           >
@@ -252,9 +262,7 @@ export default function LandingPage() {
                   onBlur={e => { e.target.style.borderColor = error ? "#fca5a5" : "rgba(255,255,255,0.13)"; }}
                 />
               </div>
-              {error && (
-                <p style={{ color: "#fca5a5", fontSize: 12, margin: 0 }}>{error}</p>
-              )}
+              {error && <p style={{ color: "#fca5a5", fontSize: 12, margin: 0 }}>{error}</p>}
               <motion.button
                 type="submit"
                 disabled={loading || zip.length < 5}
@@ -300,11 +308,43 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Civic engagement stats bar ────────────────────────────────────── */}
+      <div style={{ background: "#060e1f", borderBottom: "1px solid rgba(184,131,14,0.15)" }}>
+        <div style={{
+          maxWidth: 1200, margin: "0 auto",
+          padding: isMobile ? "20px 20px" : "16px 28px",
+          display: "flex", gap: isMobile ? 20 : 40,
+          alignItems: "center",
+          justifyContent: "center",
+          flexWrap: "wrap",
+        }}>
+          {[
+            { Icon: Users, stat: "27%", desc: "of Americans have ever contacted their representative (Pew, 2023)" },
+            { Icon: TrendingUp, stat: "10,000+", desc: "bills introduced per Congress — most never become law" },
+            { Icon: MessageSquare, stat: "535", desc: "members of Congress vote on federal laws on your behalf" },
+          ].map(({ Icon, stat, desc }) => (
+            <div key={stat} style={{
+              display: "flex", alignItems: "center", gap: 10,
+              flex: isMobile ? "1 1 100%" : "0 1 auto",
+            }}>
+              <Icon size={16} strokeWidth={1.8} color="#b8830e" style={{ flexShrink: 0 }} />
+              <span style={{ fontFamily: "var(--font-playfair)", fontSize: 18, fontWeight: 700,
+                color: "white", flexShrink: 0 }}>{stat}</span>
+              <span style={{ fontSize: 11.5, color: "#4b5f7a",
+                fontFamily: "var(--font-dm-sans)", lineHeight: 1.4 }}>{desc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* ── Trust bar ─────────────────────────────────────────────────────── */}
       <div style={{ background: "#0d1f3c", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{
-          maxWidth: 1200, margin: "0 auto", padding: "14px 28px",
-          display: "flex", gap: 32, alignItems: "center", justifyContent: "center",
+          maxWidth: 1200, margin: "0 auto",
+          padding: isMobile ? "12px 20px" : "14px 28px",
+          display: "flex", gap: isMobile ? 16 : 32,
+          alignItems: "center", justifyContent: "center",
+          flexWrap: "wrap",
         }}>
           {[
             { Icon: Shield, text: "100% nonpartisan — no political agenda" },
@@ -320,17 +360,20 @@ export default function LandingPage() {
       </div>
 
       {/* ── Featured bills ────────────────────────────────────────────────── */}
-      <section style={{ background: "#f4f2ee", padding: "60px 28px 80px" }}>
+      <section style={{ background: "#f4f2ee", padding: isMobile ? "40px 20px 56px" : "60px 28px 80px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "baseline",
-            justifyContent: "space-between", marginBottom: 28 }}>
+          <div style={{
+            display: "flex", alignItems: isMobile ? "flex-start" : "baseline",
+            flexDirection: isMobile ? "column" : "row",
+            justifyContent: "space-between", gap: 12, marginBottom: 28,
+          }}>
             <div>
-              <h2 style={{ fontFamily: "var(--font-playfair)", fontSize: 30,
+              <h2 style={{ fontFamily: "var(--font-playfair)", fontSize: isMobile ? 24 : 30,
                 fontWeight: 700, color: "#0d1f3c", marginBottom: 6 }}>
                 Currently before the 119th Congress
               </h2>
               <p style={{ fontSize: 13.5, color: "#7a8699", fontFamily: "var(--font-dm-sans)" }}>
-                Live from Congress.gov — enter your ZIP to see bills matched to your interests
+                Live from Congress.gov — real legislation, real stakes
               </p>
             </div>
             <a href="/bills" style={{
@@ -343,7 +386,9 @@ export default function LandingPage() {
           </div>
 
           <div style={{
-            display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16,
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: 16,
           }}>
             {featured.map(bill => (
               <FeaturedBillCard key={bill.id} bill={bill} />
@@ -353,17 +398,21 @@ export default function LandingPage() {
       </section>
 
       {/* ── How it works ──────────────────────────────────────────────────── */}
-      <section style={{ background: "white", padding: "64px 28px" }}>
+      <section style={{ background: "white", padding: isMobile ? "48px 20px" : "64px 28px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <h2 style={{ fontFamily: "var(--font-playfair)", fontSize: 28,
+          <h2 style={{ fontFamily: "var(--font-playfair)", fontSize: isMobile ? 24 : 28,
             fontWeight: 700, color: "#0d1f3c", textAlign: "center", marginBottom: 48 }}>
             Your voice in Congress — made simple
           </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 32 }}>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+            gap: isMobile ? 16 : 32,
+          }}>
             {[
               { n: "01", title: "Enter your ZIP", desc: "We identify your House representative and two Senators — the three people who vote on federal laws in your name." },
-              { n: "02", title: "Explore live bills", desc: "Browse legislation matched to your interests. Plain-English summaries, balanced perspectives, and pass likelihood estimates — all AI-powered." },
-              { n: "03", title: "Take action", desc: "Generate a personalized letter or call script for your representatives. Share bills with friends. Make your voice heard." },
+              { n: "02", title: "Explore live bills", desc: "Browse legislation from Congress.gov with AI-powered plain-English summaries, balanced perspectives, and pass likelihood scores." },
+              { n: "03", title: "Take action", desc: "Generate a personalized letter or call script for any representative. Copy it, send it, and make your voice heard." },
             ].map(({ n, title, desc }) => (
               <div key={n} style={{ padding: "28px 24px", borderRadius: 16, background: "#f4f2ee",
                 border: "1.5px solid #e6e2d8" }}>
@@ -376,13 +425,29 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+
+          {/* CTA */}
+          <div style={{ textAlign: "center", marginTop: 48 }}>
+            <a href="/bills" style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "13px 28px", borderRadius: 10, fontSize: 14, fontWeight: 700,
+              textDecoration: "none", background: "#0d1f3c", color: "white",
+              fontFamily: "var(--font-dm-sans)",
+            }}>
+              Browse Bills →
+            </a>
+          </div>
         </div>
       </section>
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
-      <footer style={{ background: "#060e1f", padding: "24px 28px", marginTop: "auto" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto",
-          display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <footer style={{ background: "#060e1f", padding: "24px 20px", marginTop: "auto" }}>
+        <div style={{
+          maxWidth: 1200, margin: "0 auto",
+          display: "flex", alignItems: isMobile ? "flex-start" : "center",
+          flexDirection: isMobile ? "column" : "row",
+          justifyContent: "space-between", gap: 12,
+        }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 22, height: 22, borderRadius: 6,
               background: "linear-gradient(135deg, #1e4080, #2563c4)",
@@ -393,13 +458,13 @@ export default function LandingPage() {
             <span style={{ fontSize: 11, color: "#4b5f7a",
               fontFamily: "var(--font-dm-sans)" }}>· Congressional App Challenge 2025–26</span>
           </div>
-          <div style={{ display: "flex", gap: 20, fontSize: 11, color: "#4b5f7a",
-            fontFamily: "var(--font-dm-sans)" }}>
-            <span>AI by Groq</span>
+          <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#4b5f7a",
+            fontFamily: "var(--font-dm-sans)", flexWrap: "wrap" }}>
+            <span>AI by Groq (Llama 3.3-70B)</span>
             <span>·</span>
-            <span>Data: Congress.gov</span>
+            <span>Data: Congress.gov API v3</span>
             <span>·</span>
-            <span>Nonpartisan</span>
+            <span>Built with Next.js 16 &amp; TypeScript</span>
           </div>
         </div>
       </footer>

@@ -6,10 +6,11 @@ import {
   Search, X, ChevronDown, ExternalLink, ArrowRight,
   Loader2, Mail, Phone, Share2, ThumbsUp, ThumbsDown,
   Check, Copy, BookOpen, BarChart2, Flame, Sparkles,
-  Star, Users, Calendar,
+  Star, Users, Calendar, SlidersHorizontal,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import type { Bill, BillSummary, PassLikelihood, ProsCons, Representative } from "@/lib/types";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 /* ── Stage config ────────────────────────────────────────────────────────── */
 const STAGES = ["Introduced", "In Committee", "Floor Ready", "Passed", "Signed"];
@@ -758,6 +759,71 @@ function Label({ children, optional }: { children: React.ReactNode; optional?: b
 /* Main page                                                                    */
 /* ════════════════════════════════════════════════════════════════════════════ */
 
+/* ── Reusable filter panel content (used in both sidebar + mobile drawer) ─── */
+function FilterPanelContent({
+  chamber, setChamber, stages, toggleStage, policies, togglePolicy, policyAreas,
+}: {
+  chamber: "all" | "house" | "senate";
+  setChamber: (v: "all" | "house" | "senate") => void;
+  stages: Set<number>;
+  toggleStage: (s: number) => void;
+  policies: Set<string>;
+  togglePolicy: (p: string) => void;
+  policyAreas: [string, number][];
+}) {
+  const SECTION = { marginBottom: 24 };
+  const TITLE = {
+    fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", color: "#7a8699",
+    textTransform: "uppercase" as const, marginBottom: 12, fontFamily: "var(--font-dm-sans)",
+  };
+  return (
+    <>
+      <div style={SECTION}>
+        <p style={TITLE}>Chamber</p>
+        {([
+          { val: "all", label: "All chambers" },
+          { val: "house", label: "House (HR/HRES)" },
+          { val: "senate", label: "Senate (S/SRES)" },
+        ] as { val: typeof chamber; label: string }[]).map(({ val, label }) => (
+          <label key={val} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
+            cursor: "pointer", fontSize: 13, color: "#334155", fontFamily: "var(--font-dm-sans)" }}>
+            <input type="radio" name="chamber-filter" checked={chamber === val}
+              onChange={() => setChamber(val)} style={{ accentColor: "#1e4080" }} />
+            {label}
+          </label>
+        ))}
+      </div>
+      <div style={SECTION}>
+        <p style={TITLE}>Legislative Stage</p>
+        {STAGES.map((label, i) => (
+          <label key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
+            cursor: "pointer", fontSize: 13, color: "#334155", fontFamily: "var(--font-dm-sans)" }}>
+            <input type="checkbox" checked={stages.has(i + 1)}
+              onChange={() => toggleStage(i + 1)} style={{ accentColor: "#1e4080" }} />
+            {label}
+          </label>
+        ))}
+      </div>
+      {policyAreas.length > 0 && (
+        <div>
+          <p style={TITLE}>Policy Area</p>
+          {policyAreas.map(([area, count]) => (
+            <label key={area} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
+              cursor: "pointer", fontSize: 12.5, color: "#334155", fontFamily: "var(--font-dm-sans)" }}>
+              <input type="checkbox" checked={policies.has(area)}
+                onChange={() => togglePolicy(area)} style={{ accentColor: "#1e4080", flexShrink: 0 }} />
+              <span style={{ flex: 1, lineHeight: 1.35 }}>
+                {POLICY_ICONS[area] ?? "📋"} {area}
+              </span>
+              <span style={{ fontSize: 11, color: "#9ba8ba", fontWeight: 600 }}>{count}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 const POLICY_ICONS: Record<string, string> = {
   "Housing and Community Development": "🏠",
   "Environmental Protection": "🌿",
@@ -796,7 +862,9 @@ export default function BillsPage() {
   const [reps, setReps] = useState<Representative[]>([]);
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
   const [showWatchlist, setShowWatchlist] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     fetch("/api/bills/all")
@@ -898,18 +966,12 @@ export default function BillsPage() {
     setPolicies(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
   }
 
-  const SIDEBAR_SECTION = { marginBottom: 24 };
-  const SECTION_TITLE = {
-    fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", color: "#7a8699",
-    textTransform: "uppercase" as const, marginBottom: 12, fontFamily: "var(--font-dm-sans)",
-  };
-
   return (
     <div style={{ minHeight: "100vh", background: "#f4f2ee", display: "flex", flexDirection: "column" }}>
       <Navbar />
 
       {/* Page header */}
-      <div style={{ background: "#0d1f3c", padding: "24px 28px" }}>
+      <div style={{ background: "#0d1f3c", padding: isMobile ? "20px 16px" : "24px 28px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <h1 style={{ fontFamily: "var(--font-playfair)", fontSize: 28, fontWeight: 700,
             color: "white", marginBottom: 10 }}>
@@ -961,7 +1023,7 @@ export default function BillsPage() {
       </div>
 
       {/* Search */}
-      <div style={{ background: "white", borderBottom: "1px solid #e6e2d8", padding: "0 28px" }}>
+      <div style={{ background: "white", borderBottom: "1px solid #e6e2d8", padding: isMobile ? "0 16px" : "0 28px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 0" }}>
             {searching
@@ -997,68 +1059,99 @@ export default function BillsPage() {
       </div>
 
       {/* Main content */}
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 28px", flex: 1,
-        display: "grid", gridTemplateColumns: "220px 1fr", gap: 28, alignItems: "start" }}>
+      <div style={{
+        maxWidth: 1200, margin: "0 auto",
+        padding: isMobile ? "16px 16px" : "24px 28px",
+        flex: 1,
+        display: "grid",
+        gridTemplateColumns: isMobile ? "1fr" : "220px 1fr",
+        gap: isMobile ? 16 : 28,
+        alignItems: "start",
+      }}>
 
-        {/* Sidebar filters */}
-        <aside style={{ background: "white", borderRadius: 14, padding: "20px",
-          border: "1.5px solid #e6e2d8", position: "sticky", top: 110 }}>
-          <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", color: "#0d1f3c",
-            textTransform: "uppercase", marginBottom: 20, fontFamily: "var(--font-dm-sans)" }}>
-            Filter Results
-          </p>
+        {/* Mobile filter button */}
+        {isMobile && (
+          <motion.button
+            onClick={() => setFiltersOpen(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "10px 16px",
+              borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+              border: "1.5px solid #e6e2d8", background: "white", color: "#334155",
+              fontFamily: "var(--font-dm-sans)", width: "100%",
+            }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <SlidersHorizontal size={14} strokeWidth={2} color="#1e4080" />
+            Filters
+            {(stages.size > 0 || policies.size > 0 || chamber !== "all") && (
+              <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "2px 8px",
+                borderRadius: 99, background: "#0d1f3c", color: "white" }}>
+                {stages.size + policies.size + (chamber !== "all" ? 1 : 0)} active
+              </span>
+            )}
+          </motion.button>
+        )}
 
-          {/* Chamber */}
-          <div style={SIDEBAR_SECTION}>
-            <p style={SECTION_TITLE}>Chamber</p>
-            {[
-              { val: "all", label: "All chambers" },
-              { val: "house", label: "House (HR/HRES)" },
-              { val: "senate", label: "Senate (S/SRES)" },
-            ].map(({ val, label }) => (
-              <label key={val} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
-                cursor: "pointer", fontSize: 13, color: "#334155", fontFamily: "var(--font-dm-sans)" }}>
-                <input type="radio" name="chamber" checked={chamber === val}
-                  onChange={() => setChamber(val as typeof chamber)}
-                  style={{ accentColor: "#1e4080" }} />
-                {label}
-              </label>
-            ))}
-          </div>
-
-          {/* Stage */}
-          <div style={SIDEBAR_SECTION}>
-            <p style={SECTION_TITLE}>Legislative Stage</p>
-            {STAGES.map((label, i) => (
-              <label key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
-                cursor: "pointer", fontSize: 13, color: "#334155", fontFamily: "var(--font-dm-sans)" }}>
-                <input type="checkbox" checked={stages.has(i + 1)}
-                  onChange={() => toggleStage(i + 1)}
-                  style={{ accentColor: "#1e4080" }} />
-                {label}
-              </label>
-            ))}
-          </div>
-
-          {/* Policy area */}
-          {policyAreas.length > 0 && (
-            <div>
-              <p style={SECTION_TITLE}>Policy Area</p>
-              {policyAreas.map(([area, count]) => (
-                <label key={area} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
-                  cursor: "pointer", fontSize: 12.5, color: "#334155", fontFamily: "var(--font-dm-sans)" }}>
-                  <input type="checkbox" checked={policies.has(area)}
-                    onChange={() => togglePolicy(area)}
-                    style={{ accentColor: "#1e4080", flexShrink: 0 }} />
-                  <span style={{ flex: 1, lineHeight: 1.35 }}>
-                    {POLICY_ICONS[area] ?? "📋"} {area}
-                  </span>
-                  <span style={{ fontSize: 11, color: "#9ba8ba", fontWeight: 600 }}>{count}</span>
-                </label>
-              ))}
-            </div>
+        {/* Mobile filter drawer overlay */}
+        <AnimatePresence>
+          {isMobile && filtersOpen && (
+            <>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setFiltersOpen(false)}
+                style={{ position: "fixed", inset: 0, background: "rgba(6,14,31,0.5)", zIndex: 200 }} />
+              <motion.div
+                initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                style={{
+                  position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 201,
+                  background: "white", borderRadius: "16px 16px 0 0",
+                  padding: "20px 20px 40px", maxHeight: "80vh", overflowY: "auto",
+                  boxShadow: "0 -8px 40px rgba(6,14,31,0.15)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                  <p style={{ fontSize: 14, fontWeight: 800, color: "#0d1f3c",
+                    fontFamily: "var(--font-dm-sans)", margin: 0 }}>Filter Results</p>
+                  <button onClick={() => setFiltersOpen(false)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#9ba8ba" }}>
+                    <X size={18} strokeWidth={2} />
+                  </button>
+                </div>
+                <FilterPanelContent
+                  chamber={chamber} setChamber={setChamber}
+                  stages={stages} toggleStage={toggleStage}
+                  policies={policies} togglePolicy={togglePolicy}
+                  policyAreas={policyAreas}
+                />
+                <motion.button
+                  onClick={() => setFiltersOpen(false)}
+                  style={{ width: "100%", marginTop: 20, padding: "12px", borderRadius: 10,
+                    fontSize: 14, fontWeight: 700, border: "none", cursor: "pointer",
+                    background: "#0d1f3c", color: "white", fontFamily: "var(--font-dm-sans)" }}
+                  whileTap={{ scale: 0.98 }}>
+                  Show {filtered.length} result{filtered.length !== 1 ? "s" : ""}
+                </motion.button>
+              </motion.div>
+            </>
           )}
-        </aside>
+        </AnimatePresence>
+
+        {/* Sidebar filters — desktop only */}
+        {!isMobile && (
+          <aside style={{ background: "white", borderRadius: 14, padding: "20px",
+            border: "1.5px solid #e6e2d8", position: "sticky", top: 110 }}>
+            <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", color: "#0d1f3c",
+              textTransform: "uppercase", marginBottom: 20, fontFamily: "var(--font-dm-sans)" }}>
+              Filter Results
+            </p>
+            <FilterPanelContent
+              chamber={chamber} setChamber={setChamber}
+              stages={stages} toggleStage={toggleStage}
+              policies={policies} togglePolicy={togglePolicy}
+              policyAreas={policyAreas}
+            />
+          </aside>
+        )}
 
         {/* Bill list */}
         <div>
