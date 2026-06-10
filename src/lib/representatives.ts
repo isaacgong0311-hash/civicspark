@@ -217,7 +217,43 @@ export interface RepLookupResult {
   live?: boolean;
 }
 
+/* ── Congress.gov member list item ──────────────────────────────────────── */
+interface ApiMember {
+  bioguideId?: string;
+  name?: string;
+  partyName?: string;
+  district?: number | string | null;
+  url?: string;
+  depiction?: { imageUrl?: string };
+  terms?: { item?: Array<{ chamber?: string }> };
+}
+
+/** Congress.gov returns names "Last, First M." — flip to "First M. Last". */
+function normalizeName(name: string): string {
+  const i = name.indexOf(",");
+  if (i === -1) return name.trim();
+  const last = name.slice(0, i).trim();
+  const rest = name.slice(i + 1).trim();
+  return `${rest} ${last}`.replace(/\s+/g, " ").trim();
+}
+
+function partyOf(partyName?: string): Representative["party"] {
+  if (partyName === "Republican") return "R";
+  if (partyName === "Democratic" || partyName === "Democrat") return "D";
+  return "I";
+}
+
+function isSenator(m: ApiMember): boolean {
+  // Senators have no congressional district; House members do.
+  const noDistrict = m.district == null || m.district === "";
+  const lastChamber = m.terms?.item?.[m.terms.item.length - 1]?.chamber ?? "";
+  return noDistrict || lastChamber === "Senate";
+}
+
 /* ── Try to fetch live member data from Congress.gov ────────────────────── */
+// The /member endpoint does NOT honor statecode/chamber query params — the
+// correct pattern is the path segment /member/{stateCode}, then partition by
+// each member's actual chamber/district.
 async function fetchMembersFromCongress(
   state: string,
   district: string,
@@ -226,55 +262,48 @@ async function fetchMembersFromCongress(
   if (!apiKey) return [];
 
   try {
-    const [senatorsRes, houseRes] = await Promise.allSettled([
-      fetch(
-        `${API_BASE}/member?api_key=${apiKey}&statecode=${state}&chamber=Senate&currentMember=true&format=json&limit=5`,
-        { headers: { Accept: "application/json" }, cache: "no-store" },
-      ),
-      fetch(
-        `${API_BASE}/member?api_key=${apiKey}&statecode=${state}&chamber=House&currentMember=true&format=json&limit=60`,
-        { headers: { Accept: "application/json" }, cache: "no-store" },
-      ),
-    ]);
+    const res = await fetch(
+      `${API_BASE}/member/${state}?api_key=${apiKey}&currentMember=true&limit=60&format=json`,
+      { headers: { Accept: "application/json" }, cache: "no-store" },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { members?: ApiMember[] };
+    const members = data.members ?? [];
+
+    const senators = members.filter(isSenator).slice(0, 2);
+    const houseRep = members.find(
+      (m) => !isSenator(m) && String(m.district ?? "") === district,
+    );
 
     const reps: Representative[] = [];
 
-    if (senatorsRes.status === "fulfilled" && senatorsRes.value.ok) {
-      const data = await senatorsRes.value.json();
-      for (const m of (data.members ?? []).slice(0, 2)) {
-        reps.push({
-          name: m.name,
-          chamber: "Senate",
-          party: m.partyName === "Republican" ? "R" : m.partyName === "Democrat" ? "D" : "I",
-          state,
-          contactUrl: m.url ?? `https://www.senate.gov`,
-          bioguideId: m.bioguideId,
-          photoUrl: m.depiction?.imageUrl,
-        });
-      }
+    if (houseRep) {
+      reps.push({
+        name: normalizeName(houseRep.name ?? ""),
+        chamber: "House",
+        party: partyOf(houseRep.partyName),
+        state,
+        district,
+        contactUrl: houseRep.url ?? "https://www.house.gov",
+        bioguideId: houseRep.bioguideId,
+        photoUrl: houseRep.depiction?.imageUrl,
+      });
     }
 
-    if (houseRes.status === "fulfilled" && houseRes.value.ok) {
-      const data = await houseRes.value.json();
-      const districtMembers = (data.members ?? []).filter(
-        (m: { district?: number | string }) =>
-          String(m.district ?? "") === district,
-      );
-      for (const m of districtMembers.slice(0, 1)) {
-        reps.push({
-          name: m.name,
-          chamber: "House",
-          party: m.partyName === "Republican" ? "R" : m.partyName === "Democrat" ? "D" : "I",
-          state,
-          district,
-          contactUrl: m.url ?? `https://www.house.gov`,
-          bioguideId: m.bioguideId,
-          photoUrl: m.depiction?.imageUrl,
-        });
-      }
+    for (const m of senators) {
+      reps.push({
+        name: normalizeName(m.name ?? ""),
+        chamber: "Senate",
+        party: partyOf(m.partyName),
+        state,
+        contactUrl: m.url ?? "https://www.senate.gov",
+        bioguideId: m.bioguideId,
+        photoUrl: m.depiction?.imageUrl,
+      });
     }
 
-    return reps;
+    // Require both senators to consider this a complete live result.
+    return senators.length === 2 ? reps : [];
   } catch {
     return [];
   }
@@ -286,10 +315,16 @@ export async function lookupByZip(zip: string): Promise<RepLookupResult> {
   const state = info?.state ?? FALLBACK.state;
   const district = info?.district ?? FALLBACK.district;
 
-  // Try live Congress.gov data
+  // Try live Congress.gov data (accurate senators + photos)
   const liveReps = await fetchMembersFromCongress(state, district);
-  if (liveReps.length >= 2) {
-    return { state, district, representatives: liveReps, live: true };
+  const liveSenators = liveReps.filter((r) => r.chamber === "Senate");
+  const liveHouse = liveReps.find((r) => r.chamber === "House");
+
+  if (liveSenators.length === 2) {
+    // Use the live House rep if matched, otherwise fill from curated data.
+    const houseRep = liveHouse ?? info?.houseRep;
+    const representatives = houseRep ? [houseRep, ...liveSenators] : liveSenators;
+    return { state, district, representatives, live: true };
   }
 
   // Fall back to curated static data
