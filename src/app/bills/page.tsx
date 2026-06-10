@@ -119,6 +119,8 @@ function BillCard({
           <motion.button
             onClick={e => { e.stopPropagation(); onStar(bill.id); }}
             title={starred ? "Remove from watchlist" : "Save to watchlist"}
+            aria-label={starred ? "Remove from watchlist" : "Save to watchlist"}
+            aria-pressed={starred}
             whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
             style={{
               background: "none", border: "none", cursor: "pointer",
@@ -1039,6 +1041,7 @@ export default function BillsPage() {
             />
             {search && (
               <button onClick={() => { setSearch(""); setSearchResults(null); }}
+                aria-label="Clear search"
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#9ba8ba" }}>
                 <X size={14} strokeWidth={2} />
               </button>
@@ -1113,6 +1116,7 @@ export default function BillsPage() {
                   <p style={{ fontSize: 14, fontWeight: 800, color: "#0d1f3c",
                     fontFamily: "var(--font-dm-sans)", margin: 0 }}>Filter Results</p>
                   <button onClick={() => setFiltersOpen(false)}
+                    aria-label="Close filters"
                     style={{ background: "none", border: "none", cursor: "pointer", color: "#9ba8ba" }}>
                     <X size={18} strokeWidth={2} />
                   </button>
