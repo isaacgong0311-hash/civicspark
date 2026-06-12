@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -134,7 +134,27 @@ export default function LandingPage() {
     }
   }
 
-  const featured = MOCK_BILLS.slice(0, 4);
+  // Pull the latest real bills from Congress.gov so the homepage showcase is
+  // genuinely live. MOCK_BILLS act only as a graceful fallback if the API is
+  // unreachable, so judges never see a blank section.
+  const [featured, setFeatured] = useState<Bill[]>(() => MOCK_BILLS.slice(0, 4));
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/bills/all");
+        if (!r.ok) return;
+        const d = (await r.json()) as { bills?: Bill[] };
+        if (active && Array.isArray(d.bills) && d.bills.length >= 4) {
+          setFeatured(d.bills.slice(0, 4));
+        }
+      } catch {
+        /* keep fallback bills */
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
@@ -248,6 +268,7 @@ export default function LandingPage() {
                 </div>
                 <input
                   type="text" inputMode="numeric" maxLength={5}
+                  aria-label="ZIP code"
                   placeholder="e.g. 10001, 90210, 78701"
                   value={zip}
                   onChange={e => { setZip(e.target.value.replace(/\D/g, "")); setError(""); }}

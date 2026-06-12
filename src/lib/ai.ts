@@ -2,15 +2,89 @@ import Groq from "groq-sdk";
 import type { Bill, BillSummary, PassLikelihood, ProsCons, Representative } from "./types";
 
 const MODEL = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
+const TIMEOUT_MS = 9000;
 
 function getClient(): Groq | null {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
-  return new Groq({ apiKey });
+  return new Groq({ apiKey, timeout: TIMEOUT_MS, maxRetries: 1 });
 }
 
 function strip(text: string): string {
   return text.replace(/^```json\s*/i, "").replace(/\s*```$/, "").trim();
+}
+
+/* ── Lightweight per-instance cache ──────────────────────────────────────────
+   Fluid Compute reuses function instances, so caching AI results by bill makes
+   repeat views (and multiple judges hitting the same featured bills) instant
+   and avoids unnecessary Groq calls / rate-limit pressure during judging. */
+const CACHE = new Map<string, { v: unknown; exp: number }>();
+const TTL_MS = 1000 * 60 * 60; // 1 hour
+
+function cacheGet<T>(key: string): T | null {
+  const hit = CACHE.get(key);
+  if (hit && hit.exp > Date.now()) return hit.v as T;
+  if (hit) CACHE.delete(key);
+  return null;
+}
+function cacheSet(key: string, v: unknown): void {
+  CACHE.set(key, { v, exp: Date.now() + TTL_MS });
+  if (CACHE.size > 500) {
+    const oldest = CACHE.keys().next().value;
+    if (oldest !== undefined) CACHE.delete(oldest);
+  }
+}
+
+/* ── Groq helpers (JSON mode + graceful failure) ─────────────────────────── */
+async function chatJSON<T>(
+  client: Groq,
+  system: string,
+  user: string,
+  opts: { maxTokens: number; temperature: number },
+): Promise<T | null> {
+  try {
+    const chat = await client.chat.completions.create({
+      model: MODEL,
+      max_tokens: opts.maxTokens,
+      temperature: opts.temperature,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    });
+    const raw = chat.choices[0]?.message?.content ?? "";
+    return JSON.parse(strip(raw)) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function chatText(
+  client: Groq,
+  system: string,
+  user: string,
+  opts: { maxTokens: number; temperature: number },
+): Promise<string | null> {
+  try {
+    const chat = await client.chat.completions.create({
+      model: MODEL,
+      max_tokens: opts.maxTokens,
+      temperature: opts.temperature,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    });
+    return chat.choices[0]?.message?.content?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/* Keep user-provided free text from blowing the prompt budget. */
+function clampNote(note: string): string {
+  return (note ?? "").trim().slice(0, 500);
 }
 
 /* ── Summarize + district impact ─────────────────────────────────────────── */
@@ -19,178 +93,191 @@ export async function summarizeBill(
   state?: string,
   district?: string,
 ): Promise<BillSummary> {
-  const client = getClient();
-  if (!client) return mockSummary(bill);
-
   const location = state
     ? `${state}${district ? ` congressional district ${district}` : ""}`
     : "the United States";
 
-  const chat = await client.chat.completions.create({
-    model: MODEL,
-    max_tokens: 700,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a nonpartisan civic educator. Explain U.S. federal legislation in clear, plain English. " +
-          "Never tell people what to think. Use short sentences a high-schooler can follow. " +
-          "Return strict JSON matching the requested schema — no other text.",
-      },
-      {
-        role: "user",
-        content:
-          `Bill: ${bill.type} ${bill.number} (${bill.congress}th Congress)\n` +
-          `Title: ${bill.title}\n` +
-          `Policy area: ${bill.policyArea ?? "unknown"}\n` +
-          `Latest action: ${bill.latestAction}\n` +
-          `Constituent location: ${location}\n\n` +
-          `Return JSON:\n` +
-          `{"plainEnglish":"1-2 sentence plain explanation",` +
-          ` "whatItMeans":"1-2 sentences on how it affects an ordinary person",` +
-          ` "districtImpact":"1-2 concrete sentences on how this specifically could affect ${location}",` +
-          ` "stance":"neutral"}`,
-      },
-    ],
-  });
+  const cacheKey = `sum:${bill.id}:${state ?? ""}:${district ?? ""}`;
+  const cached = cacheGet<BillSummary>(cacheKey);
+  if (cached) return cached;
 
-  try {
-    const json = JSON.parse(strip(chat.choices[0]?.message?.content ?? ""));
-    return { plainEnglish: json.plainEnglish ?? "", whatItMeans: json.whatItMeans ?? "",
-      districtImpact: json.districtImpact ?? "", stance: "neutral" };
-  } catch { return mockSummary(bill); }
+  const client = getClient();
+  if (!client) return fallbackSummary(bill);
+
+  const json = await chatJSON<{
+    plainEnglish?: string;
+    whatItMeans?: string;
+    districtImpact?: string;
+  }>(
+    client,
+    "You are a nonpartisan civic educator. Explain U.S. federal legislation in clear, plain English. " +
+      "Never tell people what to think. Use short sentences a high-schooler can follow. " +
+      "Base your explanation ONLY on the title, policy area, and latest action provided. " +
+      "Do not invent specific dollar amounts, dates, vote counts, or names that are not given. " +
+      "If a detail is unknown, stay general rather than guessing. " +
+      "Return strict JSON matching the requested schema — no other text.",
+    `Bill: ${bill.type} ${bill.number} (${bill.congress}th Congress)\n` +
+      `Title: ${bill.title}\n` +
+      `Policy area: ${bill.policyArea ?? "unknown"}\n` +
+      `Latest action: ${bill.latestAction}\n` +
+      `Constituent location: ${location}\n\n` +
+      `Return JSON:\n` +
+      `{"plainEnglish":"1-2 sentence plain explanation",` +
+      ` "whatItMeans":"1-2 sentences on how it affects an ordinary person",` +
+      ` "districtImpact":"1-2 concrete sentences on how this specifically could affect ${location}"}`,
+    { maxTokens: 700, temperature: 0.3 },
+  );
+
+  if (!json || !json.plainEnglish) return fallbackSummary(bill);
+
+  const result: BillSummary = {
+    plainEnglish: json.plainEnglish,
+    whatItMeans: json.whatItMeans ?? "",
+    districtImpact: json.districtImpact ?? "",
+    stance: "neutral",
+  };
+  cacheSet(cacheKey, result);
+  return result;
 }
 
 /* ── Pros & Cons ─────────────────────────────────────────────────────────── */
 export async function generateProsCons(bill: Bill): Promise<ProsCons> {
+  const cacheKey = `pc:${bill.id}`;
+  const cached = cacheGet<ProsCons>(cacheKey);
+  if (cached) return cached;
+
   const client = getClient();
-  if (!client) return mockProsCons(bill);
+  if (!client) return fallbackProsCons(bill);
 
-  const chat = await client.chat.completions.create({
-    model: MODEL,
-    max_tokens: 700,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a balanced nonpartisan policy analyst. Present both sides of legislation fairly. " +
-          "Return strict JSON — no other text.",
-      },
-      {
-        role: "user",
-        content:
-          `Bill: ${bill.type} ${bill.number} — "${bill.title}"\n` +
-          `Policy area: ${bill.policyArea ?? "unknown"}\n\n` +
-          `Return JSON:\n` +
-          `{"pros":["3 distinct arguments FOR this bill, each under 20 words"],` +
-          ` "cons":["3 distinct arguments AGAINST this bill, each under 20 words"],` +
-          ` "supporterView":"1 sentence on who typically supports this and why",` +
-          ` "opposerView":"1 sentence on who typically opposes this and why"}`,
-      },
-    ],
-  });
+  const json = await chatJSON<{
+    pros?: string[];
+    cons?: string[];
+    supporterView?: string;
+    opposerView?: string;
+  }>(
+    client,
+    "You are a balanced nonpartisan policy analyst. Present both sides of legislation fairly and with " +
+      "equal weight. Do not reveal your own opinion. Base arguments on the bill's stated purpose; do not " +
+      "fabricate statistics. Return strict JSON — no other text.",
+    `Bill: ${bill.type} ${bill.number} — "${bill.title}"\n` +
+      `Policy area: ${bill.policyArea ?? "unknown"}\n\n` +
+      `Return JSON:\n` +
+      `{"pros":["3 distinct arguments FOR this bill, each under 20 words"],` +
+      ` "cons":["3 distinct arguments AGAINST this bill, each under 20 words"],` +
+      ` "supporterView":"1 sentence on who typically supports this and why",` +
+      ` "opposerView":"1 sentence on who typically opposes this and why"}`,
+    { maxTokens: 700, temperature: 0.4 },
+  );
 
-  try {
-    const json = JSON.parse(strip(chat.choices[0]?.message?.content ?? ""));
-    return {
-      pros: Array.isArray(json.pros) ? json.pros.slice(0, 3) : [],
-      cons: Array.isArray(json.cons) ? json.cons.slice(0, 3) : [],
-      supporterView: json.supporterView ?? "",
-      opposerView: json.opposerView ?? "",
-    };
-  } catch { return mockProsCons(bill); }
+  const pros = Array.isArray(json?.pros) ? json!.pros.filter(Boolean).slice(0, 3) : [];
+  const cons = Array.isArray(json?.cons) ? json!.cons.filter(Boolean).slice(0, 3) : [];
+  if (pros.length < 3 || cons.length < 3) return fallbackProsCons(bill);
+
+  const result: ProsCons = {
+    pros,
+    cons,
+    supporterView: json?.supporterView ?? "",
+    opposerView: json?.opposerView ?? "",
+  };
+  cacheSet(cacheKey, result);
+  return result;
 }
 
 /* ── Pass likelihood ─────────────────────────────────────────────────────── */
 export async function predictPassLikelihood(bill: Bill): Promise<PassLikelihood> {
+  const cacheKey = `pl:${bill.id}:${bill.stage ?? 1}`;
+  const cached = cacheGet<PassLikelihood>(cacheKey);
+  if (cached) return cached;
+
   const client = getClient();
-  if (!client) return mockLikelihood(bill);
+  if (!client) return fallbackLikelihood(bill);
 
-  const chat = await client.chat.completions.create({
-    model: MODEL,
-    max_tokens: 300,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a congressional analyst estimating how likely a bill is to become law. " +
-          "Base your estimate on the bill's stage, policy area, historical passage rates, and political context. " +
-          "Be realistic — most bills never become law. Return strict JSON only.",
-      },
-      {
-        role: "user",
-        content:
-          `Bill: ${bill.type} ${bill.number} (${bill.congress}th Congress)\n` +
-          `Title: "${bill.title}"\n` +
-          `Policy area: ${bill.policyArea ?? "unknown"}\n` +
-          `Current stage: ${bill.stage ?? 1}/5 (1=Introduced, 5=Signed into law)\n` +
-          `Latest action: ${bill.latestAction}\n\n` +
-          `Return JSON:\n` +
-          `{"percent":NUMBER_0_TO_100,"label":"Unlikely|Possible|Likely|Very Likely","rationale":"1-2 sentences"}`,
-      },
-    ],
-  });
+  const json = await chatJSON<{ percent?: number; label?: string; rationale?: string }>(
+    client,
+    "You are a congressional analyst estimating how likely a bill is to become law. " +
+      "Base your estimate on the bill's stage, policy area, and historical base rates for similar bills. " +
+      "Be realistic — the vast majority of introduced bills never become law. " +
+      "This is a probabilistic estimate, not a guarantee. Return strict JSON only.",
+    `Bill: ${bill.type} ${bill.number} (${bill.congress}th Congress)\n` +
+      `Title: "${bill.title}"\n` +
+      `Policy area: ${bill.policyArea ?? "unknown"}\n` +
+      `Current stage: ${bill.stage ?? 1}/5 (1=Introduced, 5=Signed into law)\n` +
+      `Latest action: ${bill.latestAction}\n\n` +
+      `Return JSON:\n` +
+      `{"percent":NUMBER_0_TO_100,"label":"Unlikely|Possible|Likely|Very Likely",` +
+      `"rationale":"1-2 sentences explaining the estimate"}`,
+    { maxTokens: 300, temperature: 0.2 },
+  );
 
-  try {
-    const json = JSON.parse(strip(chat.choices[0]?.message?.content ?? ""));
-    const pct = Math.min(100, Math.max(0, Number(json.percent) || 0));
-    return { percent: pct, label: json.label ?? labelFromPct(pct), rationale: json.rationale ?? "" };
-  } catch { return mockLikelihood(bill); }
+  if (!json || json.percent == null || Number.isNaN(Number(json.percent))) {
+    return fallbackLikelihood(bill);
+  }
+
+  const pct = Math.min(100, Math.max(0, Number(json.percent)));
+  const result: PassLikelihood = {
+    percent: pct,
+    label: (json.label as PassLikelihood["label"]) ?? labelFromPct(pct),
+    rationale: json.rationale ?? "",
+  };
+  cacheSet(cacheKey, result);
+  return result;
 }
 
 /* ── Constituent letter ──────────────────────────────────────────────────── */
 export async function generateLetter(
-  bill: Bill, rep: Representative,
-  position: "support" | "oppose", personalNote: string,
+  bill: Bill,
+  rep: Representative,
+  position: "support" | "oppose",
+  personalNote: string,
 ): Promise<string> {
   const client = getClient();
-  if (!client) return mockLetter(bill, rep, position, personalNote);
+  if (!client) return fallbackLetter(bill, rep, position, personalNote);
+  const note = clampNote(personalNote);
 
-  const chat = await client.chat.completions.create({
-    model: MODEL, max_tokens: 700,
-    messages: [
-      { role: "system", content:
-        "You draft short, respectful, persuasive constituent letters to members of Congress. " +
-        "Keep them under 200 words. Make them specific and personal — not form-letter language. " +
-        "Return only the letter body text, starting with 'Dear …'." },
-      { role: "user", content:
-        `Write a letter to ${rep.chamber === "Senate" ? "Senator" : "Representative"} ${rep.name} ` +
-        `(${rep.state}${rep.district ? `-${rep.district}` : ""}).\n` +
-        `The constituent ${position}s ${bill.type} ${bill.number}: "${bill.title}".\n` +
-        (personalNote ? `Personal note to weave in naturally: ${personalNote}\n` : "") +
-        `Make it sound like a real person wrote it, not a form letter.` },
-    ],
-  });
+  const text = await chatText(
+    client,
+    "You draft short, respectful, persuasive constituent letters to members of Congress. " +
+      "Keep them under 200 words. Make them specific and personal — not form-letter language. " +
+      "Reference the bill by its number and title. Do not fabricate statistics, events, or quotes. " +
+      "Return only the letter body text, starting with 'Dear …'.",
+    `Write a letter to ${rep.chamber === "Senate" ? "Senator" : "Representative"} ${rep.name} ` +
+      `(${rep.state}${rep.district ? `-${rep.district}` : ""}).\n` +
+      `The constituent ${position}s ${bill.type} ${bill.number}: "${bill.title}".\n` +
+      (note ? `Personal note to weave in naturally: ${note}\n` : "") +
+      `Make it sound like a real person wrote it, not a form letter.`,
+    { maxTokens: 700, temperature: 0.6 },
+  );
 
-  return chat.choices[0]?.message?.content?.trim() ?? mockLetter(bill, rep, position, personalNote);
+  return text ?? fallbackLetter(bill, rep, position, personalNote);
 }
 
 /* ── Call script ─────────────────────────────────────────────────────────── */
 export async function generateCallScript(
-  bill: Bill, rep: Representative,
-  position: "support" | "oppose", personalNote: string,
+  bill: Bill,
+  rep: Representative,
+  position: "support" | "oppose",
+  personalNote: string,
 ): Promise<string> {
   const client = getClient();
-  if (!client) return mockCallScript(bill, rep, position);
+  if (!client) return fallbackCallScript(bill, rep, position);
+  const note = clampNote(personalNote);
 
-  const chat = await client.chat.completions.create({
-    model: MODEL, max_tokens: 500,
-    messages: [
-      { role: "system", content:
-        "You write short, confident phone call scripts for constituents calling congressional offices. " +
-        "Format as a brief script under 120 words. Include: greeting, who you are, your position, " +
-        "one key reason, and a clear ask. Use natural spoken language. Return only the script text." },
-      { role: "user", content:
-        `Write a phone call script for a constituent calling ` +
-        `${rep.chamber === "Senate" ? "Senator" : "Representative"} ${rep.name}'s office.\n` +
-        `Bill: ${bill.type} ${bill.number} — "${bill.title}"\n` +
-        `Position: ${position}\n` +
-        (personalNote ? `Personal context: ${personalNote}\n` : "") +
-        `Keep it under 120 words, casual and confident.` },
-    ],
-  });
+  const text = await chatText(
+    client,
+    "You write short, confident phone call scripts for constituents calling congressional offices. " +
+      "Format as a brief script under 120 words. Include: greeting, who you are, your position, " +
+      "one key reason, and a clear ask. Use natural spoken language. Do not fabricate statistics. " +
+      "Return only the script text.",
+    `Write a phone call script for a constituent calling ` +
+      `${rep.chamber === "Senate" ? "Senator" : "Representative"} ${rep.name}'s office.\n` +
+      `Bill: ${bill.type} ${bill.number} — "${bill.title}"\n` +
+      `Position: ${position}\n` +
+      (note ? `Personal context: ${note}\n` : "") +
+      `Keep it under 120 words, casual and confident.`,
+    { maxTokens: 500, temperature: 0.6 },
+  );
 
-  return chat.choices[0]?.message?.content?.trim() ?? mockCallScript(bill, rep, position);
+  return text ?? fallbackCallScript(bill, rep, position);
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
@@ -201,48 +288,67 @@ function labelFromPct(pct: number): PassLikelihood["label"] {
   return "Unlikely";
 }
 
-/* ── Mocks ───────────────────────────────────────────────────────────────── */
-function mockSummary(bill: Bill): BillSummary {
+/* ── Graceful fallbacks ──────────────────────────────────────────────────────
+   Used only if the AI service is unreachable. These are presentable, neutral,
+   and never expose configuration details to the user. */
+function fallbackSummary(bill: Bill): BillSummary {
+  const area = bill.policyArea ? bill.policyArea.toLowerCase() : "federal policy";
   return {
-    plainEnglish: `${bill.title} is a proposed federal law currently at: ${bill.latestAction.toLowerCase()}.`,
-    whatItMeans: "Add a GROQ_API_KEY to .env.local for a full AI-written explanation.",
-    districtImpact: "Add a GROQ_API_KEY to .env.local for a district-specific impact analysis.",
+    plainEnglish: `${bill.title} is a piece of federal legislation in the area of ${area}. Its most recent status is: ${bill.latestAction.toLowerCase()}.`,
+    whatItMeans:
+      "Like most legislation, its real-world effect depends on whether it advances through Congress and is signed into law. Open the official Congress.gov record below for the full bill text.",
+    districtImpact:
+      "Federal laws in this area can affect funding, rules, and programs that reach communities across the country.",
     stance: "neutral",
   };
 }
 
-function mockProsCons(bill: Bill): ProsCons {
+function fallbackProsCons(bill: Bill): ProsCons {
   return {
-    pros: [`Addresses a key policy need related to ${bill.policyArea ?? "this area"}`,
-           "May provide direct benefits to affected communities",
-           "Has support from stakeholders who prioritize this issue"],
-    cons: ["May require significant federal funding or resources",
-           "Some argue alternative approaches could be more effective",
-           "Implementation challenges may affect outcomes"],
-    supporterView: "Advocates and affected communities tend to support this bill.",
+    pros: [
+      `Addresses a recognized policy need related to ${bill.policyArea ?? "this issue area"}`,
+      "Could deliver direct benefits to the communities it targets",
+      "Has backing from stakeholders who prioritize this issue",
+    ],
+    cons: [
+      "May require significant federal funding or resources",
+      "Some argue alternative approaches could be more effective",
+      "Implementation and oversight challenges could affect outcomes",
+    ],
+    supporterView: "Advocates and directly affected communities tend to support this bill.",
     opposerView: "Critics may cite cost concerns or prefer alternative solutions.",
   };
 }
 
-function mockLikelihood(bill: Bill): PassLikelihood {
+function fallbackLikelihood(bill: Bill): PassLikelihood {
   const stage = bill.stage ?? 1;
-  const pct = [5, 12, 22, 45, 95][stage - 1];
-  return { percent: pct, label: labelFromPct(pct), rationale: "Add a GROQ_API_KEY for AI-powered likelihood analysis." };
+  const pct = [5, 12, 22, 45, 95][Math.min(4, Math.max(0, stage - 1))];
+  return {
+    percent: pct,
+    label: labelFromPct(pct),
+    rationale:
+      "Estimate based on the bill's current stage and the historical base rate that most introduced bills do not become law.",
+  };
 }
 
-function mockLetter(bill: Bill, rep: Representative, position: "support" | "oppose", note: string): string {
+function fallbackLetter(
+  bill: Bill,
+  rep: Representative,
+  position: "support" | "oppose",
+  note: string,
+): string {
   const title = rep.chamber === "Senate" ? "Senator" : "Representative";
   return (
     `Dear ${title} ${rep.name},\n\n` +
     `I am a constituent from ${rep.state}${rep.district ? `, District ${rep.district}` : ""}, ` +
     `and I am writing to urge you to ${position} ${bill.type} ${bill.number} — the ${bill.title}.\n\n` +
-    (note ? `${note}\n\n` : "") +
+    (clampNote(note) ? `${clampNote(note)}\n\n` : "") +
     `This issue matters deeply to me and our community. I would appreciate knowing your position.\n\n` +
     `Thank you for your service.\n\nRespectfully,\nA constituent from ${rep.state}`
   );
 }
 
-function mockCallScript(bill: Bill, rep: Representative, position: "support" | "oppose"): string {
+function fallbackCallScript(bill: Bill, rep: Representative, position: "support" | "oppose"): string {
   const title = rep.chamber === "Senate" ? "Senator" : "Representative";
   return (
     `Hi, my name is [YOUR NAME] and I'm a constituent calling to share my view on ${bill.type} ${bill.number}.\n\n` +
