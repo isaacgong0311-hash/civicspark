@@ -6,7 +6,7 @@ import {
   Search, X, ChevronDown, ExternalLink, ArrowRight,
   Loader2, Mail, Phone, Share2, ThumbsUp, ThumbsDown,
   Check, Copy, BookOpen, BarChart2, Flame, Sparkles,
-  Star, Users, Calendar, SlidersHorizontal,
+  Star, Users, Calendar, SlidersHorizontal, Send,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import type { Bill, BillSummary, PassLikelihood, ProsCons, Representative } from "@/lib/types";
@@ -281,7 +281,8 @@ function ProsConsPanel({ data }: { data: ProsCons }) {
 }
 
 /* ── Action Drawer ───────────────────────────────────────────────────────── */
-type ActionTab = "overview" | "perspectives" | "act";
+type ActionTab = "overview" | "perspectives" | "ask" | "act";
+type AskMsg = { role: "user" | "assistant"; content: string };
 type ContactTab = "letter" | "call" | "share";
 
 function ActionDrawer({
@@ -305,6 +306,54 @@ function ActionDrawer({
   const [genLetter, setGenLetter] = useState(false);
   const [genScript, setGenScript] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [askMsgs, setAskMsgs] = useState<AskMsg[]>([]);
+  const [askInput, setAskInput] = useState("");
+  const [askLoading, setAskLoading] = useState(false);
+  const askScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Reset the conversation when switching bills.
+  useEffect(() => { setAskMsgs([]); setAskInput(""); }, [bill.id]);
+
+  // Keyboard: close the drawer on Escape (standard dialog behavior).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Keep the latest message in view as the conversation grows.
+  useEffect(() => {
+    askScrollRef.current?.scrollTo({ top: askScrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [askMsgs, askLoading]);
+
+  async function handleAsk(question: string) {
+    const q = question.trim();
+    if (!q || askLoading) return;
+    const history = askMsgs;
+    setAskMsgs(prev => [...prev, { role: "user", content: q }]);
+    setAskInput("");
+    setAskLoading(true);
+    try {
+      const r = await fetch("/api/ask", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bill, question: q, history }),
+      });
+      const d = await r.json();
+      setAskMsgs(prev => [...prev, {
+        role: "assistant",
+        content: typeof d.answer === "string" && d.answer
+          ? d.answer
+          : "Sorry — I couldn't answer that just now. Please try again.",
+      }]);
+    } catch {
+      setAskMsgs(prev => [...prev, {
+        role: "assistant",
+        content: "Sorry — I couldn't reach the server. Please try again.",
+      }]);
+    } finally {
+      setAskLoading(false);
+    }
+  }
 
   useEffect(() => {
     setLoadingSummary(true);
@@ -417,6 +466,7 @@ function ActionDrawer({
             {([
               { id: "overview", label: "Overview" },
               { id: "perspectives", label: "Perspectives" },
+              { id: "ask", label: "Ask AI" },
               { id: "act", label: "Take Action" },
             ] as { id: ActionTab; label: string }[]).map(({ id, label }) => (
               <button key={id} role="tab" aria-selected={infoTab === id}
@@ -492,6 +542,90 @@ function ActionDrawer({
                 <p style={{ fontSize: 11, color: "#9ba8ba", textAlign: "center", marginTop: 12,
                   fontStyle: "italic", fontFamily: "var(--font-dm-sans)" }}>
                   AI-generated perspectives. Nonpartisan — not CivicSpark&apos;s views.
+                </p>
+              </motion.div>
+            )}
+
+            {/* Ask AI */}
+            {infoTab === "ask" && (
+              <motion.div key="ask" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                <Label>Ask about this bill</Label>
+
+                {/* Message stream */}
+                <div ref={askScrollRef}
+                  style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12,
+                    maxHeight: 320, overflowY: "auto", paddingRight: 2 }}>
+                  {askMsgs.length === 0 && !askLoading && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <p style={{ fontSize: 12.5, lineHeight: 1.6, color: "#64748b",
+                        fontFamily: "var(--font-dm-sans)", margin: "0 0 4px" }}>
+                        Get answers grounded in this bill&apos;s official record. Try:
+                      </p>
+                      {[
+                        "What problem is this bill trying to solve?",
+                        "Who would this affect the most?",
+                        "What stage is it at, and what happens next?",
+                      ].map(s => (
+                        <button key={s} onClick={() => handleAsk(s)}
+                          style={{ textAlign: "left", padding: "9px 12px", borderRadius: 10,
+                            border: "1.5px solid #e2ddd2", background: "white", cursor: "pointer",
+                            fontSize: 12.5, color: "#334155", fontFamily: "var(--font-dm-sans)",
+                            fontWeight: 600, display: "flex", alignItems: "center", gap: 7 }}>
+                          <Sparkles size={12} strokeWidth={2} color="#b8830e" /> {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {askMsgs.map((m, i) => (
+                    <div key={i} style={{
+                      alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                      maxWidth: "85%", padding: "10px 13px", borderRadius: 13,
+                      fontSize: 13, lineHeight: 1.6, fontFamily: "var(--font-dm-sans)",
+                      whiteSpace: "pre-wrap",
+                      background: m.role === "user" ? "#0d1f3c" : "white",
+                      color: m.role === "user" ? "white" : "#334155",
+                      border: m.role === "user" ? "none" : "1.5px solid #e2ddd2",
+                      borderBottomRightRadius: m.role === "user" ? 4 : 13,
+                      borderBottomLeftRadius: m.role === "assistant" ? 4 : 13,
+                    }}>
+                      {m.content}
+                    </div>
+                  ))}
+
+                  {askLoading && (
+                    <div style={{ alignSelf: "flex-start", padding: "10px 13px", borderRadius: 13,
+                      background: "white", border: "1.5px solid #e2ddd2", display: "flex",
+                      alignItems: "center", gap: 7, color: "#9ba8ba", fontSize: 12.5,
+                      fontFamily: "var(--font-dm-sans)" }}>
+                      <Loader2 size={13} strokeWidth={2.5} className="animate-spin" /> Thinking…
+                    </div>
+                  )}
+                </div>
+
+                {/* Composer */}
+                <form onSubmit={e => { e.preventDefault(); handleAsk(askInput); }}
+                  style={{ display: "flex", gap: 8, marginTop: "auto" }}>
+                  <input value={askInput} onChange={e => setAskInput(e.target.value)}
+                    placeholder="Ask anything about this bill…"
+                    aria-label="Ask a question about this bill"
+                    style={{ flex: 1, padding: "11px 14px", borderRadius: 11, border: "1.5px solid #e2ddd2",
+                      fontSize: 13, fontFamily: "var(--font-dm-sans)", background: "white",
+                      color: "#0d1f3c", outline: "none" }} />
+                  <button type="submit" disabled={!askInput.trim() || askLoading}
+                    aria-label="Send question"
+                    style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                      width: 44, borderRadius: 11, border: "none", flexShrink: 0,
+                      background: !askInput.trim() || askLoading ? "#c5cdd8" : "#0d1f3c",
+                      color: "white", cursor: !askInput.trim() || askLoading ? "default" : "pointer",
+                      transition: "background 0.15s" }}>
+                    <Send size={16} strokeWidth={2} />
+                  </button>
+                </form>
+                <p style={{ fontSize: 11, color: "#9ba8ba", textAlign: "center", marginTop: 10,
+                  fontStyle: "italic", fontFamily: "var(--font-dm-sans)" }}>
+                  AI answers are grounded in this bill&apos;s record — verify details on Congress.gov.
                 </p>
               </motion.div>
             )}
@@ -972,6 +1106,7 @@ export default function BillsPage() {
     <div style={{ minHeight: "100vh", background: "#f4f2ee", display: "flex", flexDirection: "column" }}>
       <Navbar />
 
+      <main id="main-content">
       {/* Page header */}
       <div style={{ background: "#0d1f3c", padding: isMobile ? "20px 16px" : "24px 28px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
@@ -1228,6 +1363,7 @@ export default function BillsPage() {
           )}
         </div>
       </div>
+      </main>
 
       {/* Action drawer */}
       <AnimatePresence>

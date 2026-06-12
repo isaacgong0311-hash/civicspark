@@ -82,6 +82,7 @@ export default function HowItWorksPage() {
     <div style={{ minHeight: "100vh", background: "#f4f2ee", display: "flex", flexDirection: "column" }}>
       <Navbar />
 
+      <main id="main-content">
       {/* Header */}
       <div style={{ background: "#0d1f3c", padding: isMobile ? "36px 20px 44px" : "48px 28px 56px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", textAlign: "center" }}>
@@ -203,6 +204,7 @@ export default function HowItWorksPage() {
           </Link>
         </div>
       </div>
+      </main>
     </div>
   );
 }

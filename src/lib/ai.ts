@@ -280,6 +280,70 @@ export async function generateCallScript(
   return text ?? fallbackCallScript(bill, rep, position);
 }
 
+/* ── Ask this bill (grounded conversational Q&A) ──────────────────────────────
+   A constituent can ask free-form questions about a specific bill. The model is
+   strictly grounded in the bill metadata we actually have and is told to admit
+   when something isn't in the record rather than inventing an answer. */
+export type AskTurn = { role: "user" | "assistant"; content: string };
+
+const ASK_REFUSAL =
+  "I can only answer based on this bill's official record (its title, policy area, sponsor, and latest action). " +
+  "That specific detail isn't in the information I have — the full text on Congress.gov would be the best place to check.";
+
+export async function askBill(
+  bill: Bill,
+  question: string,
+  history: AskTurn[] = [],
+): Promise<string> {
+  const q = (question ?? "").trim().slice(0, 600);
+  if (!q) return "Ask me anything about this bill — what it does, who it affects, or where it stands.";
+
+  const client = getClient();
+  if (!client) return ASK_REFUSAL;
+
+  const billContext =
+    `Bill: ${bill.type} ${bill.number} (${bill.congress}th Congress)\n` +
+    `Title: ${bill.title}\n` +
+    `Policy area: ${bill.policyArea ?? "unknown"}\n` +
+    `Sponsor: ${bill.sponsorName ?? "unknown"}${bill.sponsorParty ? ` (${bill.sponsorParty})` : ""}\n` +
+    `Cosponsors: ${bill.cosponsors ?? "unknown"}\n` +
+    `Current stage: ${bill.stage ?? 1}/5 (1=Introduced, 5=Signed into law)\n` +
+    `Latest action: ${bill.latestAction}`;
+
+  const recent = history.slice(-6).map((t) => ({
+    role: t.role,
+    content: (t.content ?? "").slice(0, 800),
+  }));
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: MODEL,
+      max_tokens: 500,
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a nonpartisan civic educator answering a constituent's questions about ONE specific U.S. " +
+            "federal bill. Use only the bill record provided below plus widely-known, general civics knowledge " +
+            "about how Congress works. Do NOT invent specific dollar amounts, vote counts, dates, names, or " +
+            "provisions that are not in the record. If asked about a specific detail you don't have, say so " +
+            "plainly and point them to the full text on Congress.gov. Never tell the person what opinion to " +
+            "hold; if asked your opinion, explain both sides instead. Keep answers under 120 words, warm and " +
+            "clear enough for a high-schooler. Plain text only — no markdown headers.\n\n" +
+            "BILL RECORD:\n" +
+            billContext,
+        },
+        ...recent,
+        { role: "user", content: q },
+      ],
+    });
+    return chat.choices[0]?.message?.content?.trim() || ASK_REFUSAL;
+  } catch {
+    return ASK_REFUSAL;
+  }
+}
+
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 function labelFromPct(pct: number): PassLikelihood["label"] {
   if (pct >= 70) return "Very Likely";

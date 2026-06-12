@@ -472,6 +472,7 @@ export default function RepresentativesPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#f4f2ee", display: "flex", flexDirection: "column" }}>
       <Navbar />
+      <main id="main-content" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       <Suspense fallback={
         <div style={{ background: "#0d1f3c", padding: "28px", flex: 1 }}>
           <div style={{ maxWidth: 1200, margin: "0 auto" }}>
@@ -484,6 +485,7 @@ export default function RepresentativesPage() {
       }>
         <RepresentativesContent />
       </Suspense>
+      </main>
     </div>
   );
 }

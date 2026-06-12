@@ -20,6 +20,8 @@ export default function Navbar() {
 
   return (
     <header style={{ position: "sticky", top: 0, zIndex: 100 }}>
+      {/* Skip link — visible only when focused via keyboard */}
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       {/* Ticker — hidden on very small screens */}
       {!isMobile && (
         <div style={{ background: "#030c1a", borderBottom: "1px solid rgba(184,131,14,0.25)" }}>

@@ -160,6 +160,7 @@ export default function LandingPage() {
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Navbar />
 
+      <main id="main-content">
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section style={{
         background: "linear-gradient(160deg, #060e1f 0%, #0d1f3c 60%, #0f2548 100%)",
@@ -460,6 +461,7 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+      </main>
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <footer style={{ background: "#060e1f", padding: "24px 20px", marginTop: "auto" }}>
