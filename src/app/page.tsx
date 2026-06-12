@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   MapPin, ArrowRight, Shield, Zap, Database,
-  ChevronRight, TrendingUp, Users, MessageSquare,
+  ChevronRight,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import type { Bill } from "@/lib/types";
@@ -329,35 +329,6 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
-
-      {/* ── Civic engagement stats bar ────────────────────────────────────── */}
-      <div style={{ background: "#060e1f", borderBottom: "1px solid rgba(184,131,14,0.15)" }}>
-        <div style={{
-          maxWidth: 1200, margin: "0 auto",
-          padding: isMobile ? "20px 20px" : "16px 28px",
-          display: "flex", gap: isMobile ? 20 : 40,
-          alignItems: "center",
-          justifyContent: "center",
-          flexWrap: "wrap",
-        }}>
-          {[
-            { Icon: Users, stat: "27%", desc: "of Americans have ever contacted their representative (Pew, 2023)" },
-            { Icon: TrendingUp, stat: "10,000+", desc: "bills introduced per Congress — most never become law" },
-            { Icon: MessageSquare, stat: "535", desc: "members of Congress vote on federal laws on your behalf" },
-          ].map(({ Icon, stat, desc }) => (
-            <div key={stat} style={{
-              display: "flex", alignItems: "center", gap: 10,
-              flex: isMobile ? "1 1 100%" : "0 1 auto",
-            }}>
-              <Icon size={16} strokeWidth={1.8} color="#b8830e" style={{ flexShrink: 0 }} />
-              <span style={{ fontFamily: "var(--font-playfair)", fontSize: 18, fontWeight: 700,
-                color: "white", flexShrink: 0 }}>{stat}</span>
-              <span style={{ fontSize: 11.5, color: "#4b5f7a",
-                fontFamily: "var(--font-dm-sans)", lineHeight: 1.4 }}>{desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* ── Trust bar ─────────────────────────────────────────────────────── */}
       <div style={{ background: "#0d1f3c", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>

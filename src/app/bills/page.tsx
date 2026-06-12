@@ -15,7 +15,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 /* ── Stage config ────────────────────────────────────────────────────────── */
 const STAGES = ["Introduced", "In Committee", "Floor Ready", "Passed", "Signed"];
 
-function StageBar({ stage }: { stage: number }) {
+function StageBar({ stage, showLabel = true }: { stage: number; showLabel?: boolean }) {
   return (
     <div style={{ display: "flex", gap: 3, alignItems: "stretch" }}>
       {STAGES.map((label, i) => {
@@ -24,13 +24,13 @@ function StageBar({ stage }: { stage: number }) {
         return (
           <div key={label} style={{ flex: 1 }}>
             <div style={{
-              height: 5, borderRadius: 2,
+              height: 4, borderRadius: 2,
               background: filled
                 ? (current ? "#1e4080" : "#4b7cc4")
                 : "#d1d9e6",
               transition: "background 0.3s",
             }} />
-            {current && (
+            {showLabel && current && (
               <div style={{
                 textAlign: "center", fontSize: 9.5, fontWeight: 700,
                 color: "#1e4080", marginTop: 4, letterSpacing: "0.03em",
@@ -44,6 +44,11 @@ function StageBar({ stage }: { stage: number }) {
       })}
     </div>
   );
+}
+
+/* Short stage name for inline pills on cards. */
+function stageName(stage: number) {
+  return STAGES[Math.min(STAGES.length - 1, Math.max(0, stage - 1))] ?? "Introduced";
 }
 
 /* ── Party color ─────────────────────────────────────────────────────────── */
@@ -170,38 +175,38 @@ function BillCard({
 
       {/* Stage bar */}
       <div style={{ marginBottom: 14 }}>
-        <StageBar stage={bill.stage ?? 1} />
+        <StageBar stage={bill.stage ?? 1} showLabel={false} />
       </div>
 
       {/* Bottom row */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11.5, color: "#9ba8ba", fontFamily: "var(--font-dm-sans)" }}>
-          Last action: {bill.latestActionDate || "—"}
-        </span>
-        <div style={{ display: "flex", gap: 8 }}>
-          <a href={bill.url} target="_blank" rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            style={{
-              display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600,
-              padding: "5px 12px", borderRadius: 7, textDecoration: "none",
-              border: "1.5px solid #d1d9e6", color: "#7a8699",
-              fontFamily: "var(--font-dm-sans)", background: "white",
-            }}>
-            <ExternalLink size={11} strokeWidth={2} /> Congress.gov
-          </a>
-          <motion.button
-            onClick={() => onAction(bill)}
-            style={{
-              display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700,
-              padding: "5px 14px", borderRadius: 7, cursor: "pointer",
-              border: "none", background: "#0d1f3c", color: "white",
-              fontFamily: "var(--font-dm-sans)",
-            }}
-            whileHover={{ background: "#1e4080" }} whileTap={{ scale: 0.97 }}
-          >
-            Take Action <ArrowRight size={12} strokeWidth={2.5} />
-          </motion.button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <span style={{
+            fontSize: 10.5, fontWeight: 700, color: "#1e4080", letterSpacing: "0.03em",
+            padding: "2px 8px", borderRadius: 5, background: "#eef3fb",
+            fontFamily: "var(--font-dm-sans)", whiteSpace: "nowrap", flexShrink: 0,
+          }}>
+            {stageName(bill.stage ?? 1)}
+          </span>
+          {bill.latestActionDate && (
+            <span style={{ fontSize: 11.5, color: "#9ba8ba", fontFamily: "var(--font-dm-sans)",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {bill.latestActionDate}
+            </span>
+          )}
         </div>
+        <motion.button
+          onClick={() => onAction(bill)}
+          style={{
+            display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700,
+            padding: "6px 15px", borderRadius: 7, cursor: "pointer", flexShrink: 0,
+            border: "none", background: "#0d1f3c", color: "white",
+            fontFamily: "var(--font-dm-sans)",
+          }}
+          whileHover={{ background: "#1e4080" }} whileTap={{ scale: 0.97 }}
+        >
+          Take Action <ArrowRight size={12} strokeWidth={2.5} />
+        </motion.button>
       </div>
     </motion.div>
   );
@@ -488,28 +493,34 @@ function ActionDrawer({
                 <Label>Plain-English Summary</Label>
                 {loadingSummary ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                    {[1, 0.8, 0.6].map((w, i) => (
+                    {[1, 0.85, 0.6, 0.9, 0.7].map((w, i) => (
                       <div key={i} className="skeleton" style={{ height: 13, width: `${w * 100}%`, borderRadius: 4 }} />
                     ))}
-                    <div className="skeleton" style={{ height: 52, borderRadius: 10, marginTop: 4 }} />
-                    <div className="skeleton" style={{ height: 52, borderRadius: 10 }} />
                   </div>
                 ) : summary ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 18 }}>
                     <p style={{ fontSize: 13.5, lineHeight: 1.7, color: "#334155",
                       fontFamily: "var(--font-dm-sans)", margin: 0 }}>
                       {summary.plainEnglish}
                     </p>
-                    <div style={{ padding: "12px 14px", borderRadius: 10, background: "#fdf3d7",
-                      border: "1.5px solid #e8c96a", fontSize: 13, lineHeight: 1.65 }}>
-                      <strong style={{ color: "#b8830e" }}>What this means for you — </strong>
-                      <span style={{ color: "#6b4f0a" }}>{summary.whatItMeans}</span>
+                    <div style={{ borderLeft: "2.5px solid #e8c96a", paddingLeft: 12 }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
+                        textTransform: "uppercase", color: "#b8830e", marginBottom: 3,
+                        fontFamily: "var(--font-dm-sans)" }}>
+                        What this means for you
+                      </div>
+                      <p style={{ fontSize: 13, lineHeight: 1.65, color: "#475569",
+                        fontFamily: "var(--font-dm-sans)", margin: 0 }}>{summary.whatItMeans}</p>
                     </div>
                     {summary.districtImpact && (
-                      <div style={{ padding: "12px 14px", borderRadius: 10, background: "#dce8f8",
-                        border: "1.5px solid #b3cff0", fontSize: 13, lineHeight: 1.65 }}>
-                        <strong style={{ color: "#1e4080" }}>District impact — </strong>
-                        <span style={{ color: "#1e3a6e" }}>{summary.districtImpact}</span>
+                      <div style={{ borderLeft: "2.5px solid #b3cff0", paddingLeft: 12 }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
+                          textTransform: "uppercase", color: "#1e4080", marginBottom: 3,
+                          fontFamily: "var(--font-dm-sans)" }}>
+                          District impact
+                        </div>
+                        <p style={{ fontSize: 13, lineHeight: 1.65, color: "#475569",
+                          fontFamily: "var(--font-dm-sans)", margin: 0 }}>{summary.districtImpact}</p>
                       </div>
                     )}
                   </div>
