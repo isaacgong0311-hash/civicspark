@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   MapPin, ArrowRight, Shield, Zap, Database,
-  ChevronRight,
+  ChevronRight, BookOpen, Globe, Vote,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import type { Bill } from "@/lib/types";
@@ -351,6 +351,60 @@ export default function LandingPage() {
           ))}
         </div>
       </div>
+
+      {/* ── Mission / origin narrative ────────────────────────────────────── */}
+      <section style={{ background: "#fbfaf7", padding: isMobile ? "44px 20px" : "64px 28px",
+        borderBottom: "1px solid #ece8df" }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", textAlign: "center" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em",
+            textTransform: "uppercase", color: "#b8830e", marginBottom: 16,
+            fontFamily: "var(--font-dm-sans)" }}>
+            Why CivicSpark exists
+          </div>
+          <p style={{ fontFamily: "var(--font-playfair)",
+            fontSize: isMobile ? 21 : 27, lineHeight: 1.5, color: "#0d1f3c",
+            fontWeight: 500, margin: 0 }}>
+            Most people never learn how their own representatives vote — not because
+            they don&apos;t care, but because the information is buried in legislative
+            jargon and scattered across government websites.{" "}
+            <span style={{ color: "#b8830e", fontStyle: "italic" }}>
+              Democracy shouldn&apos;t require a law degree.
+            </span>
+          </p>
+          <p style={{ fontSize: isMobile ? 14 : 15.5, lineHeight: 1.75, color: "#5b6577",
+            fontFamily: "var(--font-dm-sans)", marginTop: 20, maxWidth: 620,
+            marginLeft: "auto", marginRight: "auto" }}>
+            CivicSpark turns any bill into plain English — in your language, read aloud
+            if you need it — shows you exactly how your reps voted, and helps you tell
+            them what you think. From confusion to action, in under a minute.
+          </p>
+
+          {/* Pillars */}
+          <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap",
+            gap: isMobile ? 14 : 28, marginTop: 32 }}>
+            {[
+              { Icon: BookOpen, label: "Understand", desc: "Plain-English AI summaries" },
+              { Icon: Globe, label: "Inclusive", desc: "6 languages + read-aloud" },
+              { Icon: Vote, label: "Hold accountable", desc: "See how your reps voted" },
+            ].map(({ Icon, label, desc }) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 10,
+                textAlign: "left" }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                  background: "#eef3fb", display: "flex", alignItems: "center",
+                  justifyContent: "center" }}>
+                  <Icon size={18} strokeWidth={2} color="#1e4080" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: "#0d1f3c",
+                    fontFamily: "var(--font-dm-sans)" }}>{label}</div>
+                  <div style={{ fontSize: 12, color: "#7a8699",
+                    fontFamily: "var(--font-dm-sans)" }}>{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── Featured bills ────────────────────────────────────────────────── */}
       <section style={{ background: "#f4f2ee", padding: isMobile ? "40px 20px 56px" : "60px 28px 80px" }}>

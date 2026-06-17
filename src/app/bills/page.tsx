@@ -6,7 +6,7 @@ import {
   Search, X, ChevronDown, ExternalLink, ArrowRight,
   Loader2, Mail, Phone, Share2, ThumbsUp, ThumbsDown,
   Check, Copy, BookOpen, BarChart2, Flame, Sparkles,
-  Star, Users, Calendar, SlidersHorizontal, Send, Volume2, Square,
+  Star, Users, Calendar, SlidersHorizontal, Send, Volume2, Square, Languages,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import type { Bill, BillSummary, BillVote, PassLikelihood, ProsCons, Representative, VoteCast } from "@/lib/types";
@@ -14,6 +14,30 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 
 /* ── Stage config ────────────────────────────────────────────────────────── */
 const STAGES = ["Introduced", "In Committee", "Floor Ready", "Passed", "Signed"];
+
+/* Languages offered for inclusive, on-demand translated bill summaries. Kept in
+   sync with SUMMARY_LANGUAGES in lib/ai.ts (not imported here to avoid pulling
+   the server-only Groq SDK into the client bundle). `speech` is the BCP-47 tag
+   handed to the Web Speech API so the Listen button reads in the right accent. */
+const LANGUAGES: { code: string; native: string; speech: string }[] = [
+  { code: "en", native: "English", speech: "en-US" },
+  { code: "es", native: "Español", speech: "es-ES" },
+  { code: "zh", native: "中文", speech: "zh-CN" },
+  { code: "vi", native: "Tiếng Việt", speech: "vi-VN" },
+  { code: "tl", native: "Tagalog", speech: "fil-PH" },
+  { code: "fr", native: "Français", speech: "fr-FR" },
+];
+
+/* Translations for the two inline accent headers so a switched-language summary
+   reads fully in that language, not half-English. */
+const SUMMARY_LABELS: Record<string, { means: string; impact: string }> = {
+  en: { means: "What this means for you", impact: "District impact" },
+  es: { means: "Qué significa para ti", impact: "Impacto en tu distrito" },
+  zh: { means: "这对你意味着什么", impact: "对你所在选区的影响" },
+  vi: { means: "Điều này có ý nghĩa gì với bạn", impact: "Tác động đến khu vực của bạn" },
+  tl: { means: "Ano ang kahulugan nito para sa iyo", impact: "Epekto sa iyong distrito" },
+  fr: { means: "Ce que cela signifie pour vous", impact: "Impact sur votre circonscription" },
+};
 
 function StageBar({ stage, showLabel = true }: { stage: number; showLabel?: boolean }) {
   return (
@@ -407,7 +431,7 @@ function RepVotePanel({
 }
 
 /* ── Listen button (text-to-speech for accessibility) ───────────────────── */
-function ListenButton({ text, label = "Listen" }: { text: string; label?: string }) {
+function ListenButton({ text, label = "Listen", lang = "en-US" }: { text: string; label?: string; lang?: string }) {
   const [speaking, setSpeaking] = useState(false);
   const [supported, setSupported] = useState(true);
 
@@ -433,13 +457,19 @@ function ListenButton({ text, label = "Listen" }: { text: string; label?: string
     }
     synth.cancel(); // clear any queued utterances first
     const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = lang;
     utter.rate = 0.97;
     utter.pitch = 1;
+    // Prefer a voice that matches the requested language when one is installed.
+    const base = lang.split("-")[0];
+    const match = synth.getVoices().find((v) => v.lang === lang)
+      ?? synth.getVoices().find((v) => v.lang.startsWith(base));
+    if (match) utter.voice = match;
     utter.onend = () => setSpeaking(false);
     utter.onerror = () => setSpeaking(false);
     synth.speak(utter);
     setSpeaking(true);
-  }, [speaking, text]);
+  }, [speaking, text, lang]);
 
   if (!supported) return null;
 
@@ -483,6 +513,7 @@ function ActionDrawer({
   const [infoTab, setInfoTab] = useState<ActionTab>("overview");
   const [contactTab, setContactTab] = useState<ContactTab>("letter");
   const [summary, setSummary] = useState<BillSummary | null>(null);
+  const [language, setLanguage] = useState<string>("en");
   const [likelihood, setLikelihood] = useState<PassLikelihood | null>(null);
   const [prosCons, setProsCons] = useState<ProsCons | null>(null);
   const [billVote, setBillVote] = useState<BillVote | null>(null);
@@ -501,8 +532,8 @@ function ActionDrawer({
   const [askLoading, setAskLoading] = useState(false);
   const askScrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Reset the conversation when switching bills.
-  useEffect(() => { setAskMsgs([]); setAskInput(""); }, [bill.id]);
+  // Reset the conversation and language when switching bills.
+  useEffect(() => { setAskMsgs([]); setAskInput(""); setLanguage("en"); }, [bill.id]);
 
   // Keyboard: close the drawer on Escape (standard dialog behavior).
   useEffect(() => {
@@ -545,17 +576,28 @@ function ActionDrawer({
     }
   }
 
+  // Likelihood + perspectives depend only on the bill itself.
   useEffect(() => {
-    setLoadingSummary(true);
     Promise.allSettled([
-      fetch("/api/summarize", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bill }) }).then(r => r.json()).then(setSummary),
       fetch("/api/likelihood", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bill) }).then(r => r.json()).then(setLikelihood),
       fetch("/api/proscons", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bill) }).then(r => r.json()).then(setProsCons),
-    ]).finally(() => setLoadingSummary(false));
+    ]);
   }, [bill.id]);
+
+  // The plain-English summary is re-fetched whenever the reader picks a new
+  // language, so the explanation is translated on demand.
+  useEffect(() => {
+    setLoadingSummary(true);
+    setSummary(null);
+    fetch("/api/summarize", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bill, language }) })
+      .then(r => r.json())
+      .then(setSummary)
+      .catch(() => setSummary(null))
+      .finally(() => setLoadingSummary(false));
+  }, [bill.id, language]);
 
   // Fetch how the user's reps actually voted on this bill (accountability loop).
   useEffect(() => {
@@ -695,13 +737,40 @@ function ActionDrawer({
                   {summary && (
                     <div style={{ marginBottom: 8 }}>
                       <ListenButton
+                        lang={LANGUAGES.find(l => l.code === language)?.speech ?? "en-US"}
                         text={[summary.plainEnglish,
-                          summary.whatItMeans ? `What this means for you. ${summary.whatItMeans}` : "",
-                          summary.districtImpact ? `District impact. ${summary.districtImpact}` : ""]
+                          summary.whatItMeans ? `${summary.whatItMeans}` : "",
+                          summary.districtImpact ? `${summary.districtImpact}` : ""]
                           .filter(Boolean).join(" ")}
                       />
                     </div>
                   )}
+                </div>
+
+                {/* Language selector — translate the summary on demand (inclusion) */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                  <Languages size={13} strokeWidth={2} color="#9ba8ba" style={{ flexShrink: 0 }} />
+                  {LANGUAGES.map(l => {
+                    const active = l.code === language;
+                    return (
+                      <button
+                        key={l.code}
+                        type="button"
+                        onClick={() => setLanguage(l.code)}
+                        aria-pressed={active}
+                        style={{
+                          padding: "3px 9px", borderRadius: 999,
+                          border: `1px solid ${active ? "#1e4080" : "#e2e8f0"}`,
+                          background: active ? "#1e4080" : "#fff",
+                          color: active ? "#fff" : "#64748b",
+                          fontSize: 11, fontWeight: 700, cursor: "pointer",
+                          fontFamily: "var(--font-dm-sans)", transition: "all 0.15s",
+                        }}
+                      >
+                        {l.native}
+                      </button>
+                    );
+                  })}
                 </div>
                 {loadingSummary ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
@@ -719,7 +788,7 @@ function ActionDrawer({
                       <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
                         textTransform: "uppercase", color: "#b8830e", marginBottom: 3,
                         fontFamily: "var(--font-dm-sans)" }}>
-                        What this means for you
+                        {(SUMMARY_LABELS[language] ?? SUMMARY_LABELS.en).means}
                       </div>
                       <p style={{ fontSize: 13, lineHeight: 1.65, color: "#475569",
                         fontFamily: "var(--font-dm-sans)", margin: 0 }}>{summary.whatItMeans}</p>
@@ -729,7 +798,7 @@ function ActionDrawer({
                         <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
                           textTransform: "uppercase", color: "#1e4080", marginBottom: 3,
                           fontFamily: "var(--font-dm-sans)" }}>
-                          District impact
+                          {(SUMMARY_LABELS[language] ?? SUMMARY_LABELS.en).impact}
                         </div>
                         <p style={{ fontSize: 13, lineHeight: 1.65, color: "#475569",
                           fontFamily: "var(--font-dm-sans)", margin: 0 }}>{summary.districtImpact}</p>

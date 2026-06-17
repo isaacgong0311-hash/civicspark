@@ -87,17 +87,37 @@ function clampNote(note: string): string {
   return (note ?? "").trim().slice(0, 500);
 }
 
+/* ── Supported languages for inclusive, multilingual summaries ──────────────
+   Many constituents are more comfortable reading in a language other than
+   English. Offering on-demand translated summaries mirrors the accessibility /
+   inclusion focus that civic apps are repeatedly recognized for. */
+export const SUMMARY_LANGUAGES: { code: string; label: string; native: string; speech: string }[] = [
+  { code: "en", label: "English", native: "English", speech: "en-US" },
+  { code: "es", label: "Spanish", native: "Español", speech: "es-ES" },
+  { code: "zh", label: "Chinese", native: "中文", speech: "zh-CN" },
+  { code: "vi", label: "Vietnamese", native: "Tiếng Việt", speech: "vi-VN" },
+  { code: "tl", label: "Tagalog", native: "Tagalog", speech: "fil-PH" },
+  { code: "fr", label: "French", native: "Français", speech: "fr-FR" },
+];
+
+function languageName(code?: string): string | null {
+  if (!code || code === "en") return null;
+  return SUMMARY_LANGUAGES.find((l) => l.code === code)?.label ?? null;
+}
+
 /* ── Summarize + district impact ─────────────────────────────────────────── */
 export async function summarizeBill(
   bill: Bill,
   state?: string,
   district?: string,
+  language?: string,
 ): Promise<BillSummary> {
   const location = state
     ? `${state}${district ? ` congressional district ${district}` : ""}`
     : "the United States";
 
-  const cacheKey = `sum:${bill.id}:${state ?? ""}:${district ?? ""}`;
+  const langName = languageName(language);
+  const cacheKey = `sum:${bill.id}:${state ?? ""}:${district ?? ""}:${language ?? "en"}`;
   const cached = cacheGet<BillSummary>(cacheKey);
   if (cached) return cached;
 
@@ -115,17 +135,22 @@ export async function summarizeBill(
       "Base your explanation ONLY on the title, policy area, and latest action provided. " +
       "Do not invent specific dollar amounts, dates, vote counts, or names that are not given. " +
       "If a detail is unknown, stay general rather than guessing. " +
+      (langName
+        ? `Write every string value in fluent, natural ${langName}. Keep the bill number and any official ` +
+          `bill title accurate; translate the surrounding explanation. `
+        : "") +
       "Return strict JSON matching the requested schema — no other text.",
     `Bill: ${bill.type} ${bill.number} (${bill.congress}th Congress)\n` +
       `Title: ${bill.title}\n` +
       `Policy area: ${bill.policyArea ?? "unknown"}\n` +
       `Latest action: ${bill.latestAction}\n` +
       `Constituent location: ${location}\n\n` +
+      (langName ? `IMPORTANT: Respond with all explanatory text written in ${langName}.\n\n` : "") +
       `Return JSON:\n` +
       `{"plainEnglish":"1-2 sentence plain explanation",` +
       ` "whatItMeans":"1-2 sentences on how it affects an ordinary person",` +
       ` "districtImpact":"1-2 concrete sentences on how this specifically could affect ${location}"}`,
-    { maxTokens: 700, temperature: 0.3 },
+    { maxTokens: 800, temperature: 0.3 },
   );
 
   if (!json || !json.plainEnglish) return fallbackSummary(bill);
