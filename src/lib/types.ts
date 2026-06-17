@@ -62,6 +62,24 @@ export interface PassLikelihood {
   rationale: string;     // 1-2 sentence explanation
 }
 
+/** How a specific member voted on a roll-call vote. */
+export type VoteCast = "Yea" | "Nay" | "Present" | "Not Voting";
+
+export interface BillVote {
+  chamber: Chamber;
+  congress: number;
+  rollNumber: number;
+  sessionNumber: number;
+  date: string;
+  result: string;                 // e.g. "Passed" / "Failed"
+  sourceUrl: string;              // official roll-call record
+  /** Per-member breakdown — only populated for House votes (Senate not in API). */
+  memberVotesAvailable: boolean;
+  totals: { yea: number; nay: number; present: number; notVoting: number };
+  /** bioguideId -> how that representative voted (only for requested reps). */
+  repVotes: Record<string, VoteCast>;
+}
+
 export interface MemberDetail {
   bioguideId: string;
   name: string;

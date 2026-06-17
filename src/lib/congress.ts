@@ -1,7 +1,161 @@
-import type { Bill, BillStage, MemberDetail } from "./types";
+import type { Bill, BillStage, BillVote, MemberDetail, VoteCast } from "./types";
 import { ISSUE_TOPICS } from "./issues";
 
 const API_BASE = "https://api.congress.gov/v3";
+
+/* ── Roll-call votes ──────────────────────────────────────────────────────────
+   Closes the accountability loop: given a bill and a set of representatives,
+   find the recorded House roll-call vote and report how each rep actually voted.
+   Senate per-member votes are not exposed by the Congress.gov API, so those
+   degrade gracefully to a result + link-out. */
+
+interface RecordedVote {
+  chamber?: string;
+  congress?: number;
+  rollNumber?: number;
+  sessionNumber?: number;
+  date?: string;
+  url?: string;
+}
+
+interface MemberVoteRow {
+  bioguideID?: string;
+  voteCast?: string;
+}
+
+function normalizeVote(v?: string): VoteCast {
+  const s = (v ?? "").toLowerCase();
+  if (s === "yea" || s === "aye" || s === "yes") return "Yea";
+  if (s === "nay" || s === "no") return "Nay";
+  if (s === "present") return "Present";
+  return "Not Voting";
+}
+
+/** Fetch how a member voted on a specific House roll call, plus chamber totals. */
+async function fetchHouseRollCall(
+  apiKey: string,
+  congress: number,
+  session: number,
+  roll: number,
+  bioguideIds: string[],
+): Promise<{ totals: BillVote["totals"]; repVotes: Record<string, VoteCast>; result?: string } | null> {
+  const url =
+    `${API_BASE}/house-vote/${congress}/${session}/${roll}/members` +
+    `?api_key=${apiKey}&format=json`;
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    houseRollCallVoteMemberVotes?: { result?: string; results?: MemberVoteRow[] };
+  };
+  const block = data.houseRollCallVoteMemberVotes;
+  const rows = block?.results ?? [];
+  if (rows.length === 0) return null;
+
+  const totals = { yea: 0, nay: 0, present: 0, notVoting: 0 };
+  const wanted = new Set(bioguideIds);
+  const repVotes: Record<string, VoteCast> = {};
+
+  for (const row of rows) {
+    const v = normalizeVote(row.voteCast);
+    if (v === "Yea") totals.yea++;
+    else if (v === "Nay") totals.nay++;
+    else if (v === "Present") totals.present++;
+    else totals.notVoting++;
+    if (row.bioguideID && wanted.has(row.bioguideID)) {
+      repVotes[row.bioguideID] = v;
+    }
+  }
+  return { totals, repVotes, result: block?.result };
+}
+
+/**
+ * Get the most relevant recorded vote for a bill and how the given reps voted.
+ * Returns null if the bill has no recorded roll-call vote yet.
+ */
+export async function getBillVote(
+  congress: number,
+  billType: string,
+  billNumber: string,
+  bioguideIds: string[],
+): Promise<BillVote | null> {
+  const apiKey = process.env.CONGRESS_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const actionsUrl =
+      `${API_BASE}/bill/${congress}/${billType.toLowerCase()}/${billNumber}/actions` +
+      `?api_key=${apiKey}&format=json&limit=250`;
+    const res = await fetch(actionsUrl, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      actions?: Array<{ recordedVotes?: RecordedVote[] }>;
+    };
+
+    // Collect every recorded vote across all actions.
+    const votes: RecordedVote[] = [];
+    for (const a of data.actions ?? []) {
+      for (const rv of a.recordedVotes ?? []) votes.push(rv);
+    }
+    if (votes.length === 0) return null;
+
+    // Prefer the most recent House vote (we have per-member data for House).
+    const houseVotes = votes
+      .filter((v) => (v.chamber ?? "").toLowerCase() === "house" && v.rollNumber != null)
+      .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
+
+    if (houseVotes.length > 0) {
+      const hv = houseVotes[0];
+      const detail = await fetchHouseRollCall(
+        apiKey,
+        hv.congress ?? congress,
+        hv.sessionNumber ?? 1,
+        hv.rollNumber!,
+        bioguideIds,
+      );
+      if (!detail) return null;
+      return {
+        chamber: "House",
+        congress: hv.congress ?? congress,
+        rollNumber: hv.rollNumber!,
+        sessionNumber: hv.sessionNumber ?? 1,
+        date: hv.date ?? "",
+        result: detail.result ?? "",
+        sourceUrl: hv.url ?? "",
+        memberVotesAvailable: true,
+        totals: detail.totals,
+        repVotes: detail.repVotes,
+      };
+    }
+
+    // Only Senate vote(s) exist — no per-member data available via the API.
+    const sv = votes
+      .filter((v) => (v.chamber ?? "").toLowerCase() === "senate" && v.rollNumber != null)
+      .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())[0];
+    if (sv) {
+      return {
+        chamber: "Senate",
+        congress: sv.congress ?? congress,
+        rollNumber: sv.rollNumber!,
+        sessionNumber: sv.sessionNumber ?? 1,
+        date: sv.date ?? "",
+        result: "",
+        sourceUrl: sv.url ?? "",
+        memberVotesAvailable: false,
+        totals: { yea: 0, nay: 0, present: 0, notVoting: 0 },
+        repVotes: {},
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 interface CongressApiBill {
   congress: number;

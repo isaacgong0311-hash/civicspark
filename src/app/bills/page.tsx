@@ -6,10 +6,10 @@ import {
   Search, X, ChevronDown, ExternalLink, ArrowRight,
   Loader2, Mail, Phone, Share2, ThumbsUp, ThumbsDown,
   Check, Copy, BookOpen, BarChart2, Flame, Sparkles,
-  Star, Users, Calendar, SlidersHorizontal, Send,
+  Star, Users, Calendar, SlidersHorizontal, Send, Volume2, Square,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import type { Bill, BillSummary, PassLikelihood, ProsCons, Representative } from "@/lib/types";
+import type { Bill, BillSummary, BillVote, PassLikelihood, ProsCons, Representative, VoteCast } from "@/lib/types";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 /* ── Stage config ────────────────────────────────────────────────────────── */
@@ -285,6 +285,189 @@ function ProsConsPanel({ data }: { data: ProsCons }) {
   );
 }
 
+/* ── Roll-call vote panel (accountability) ───────────────────────────────── */
+function voteStyle(v: VoteCast) {
+  if (v === "Yea") return { bg: "#dcfce7", border: "#86efac", color: "#15803d", label: "Voted YES" };
+  if (v === "Nay") return { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c", label: "Voted NO" };
+  if (v === "Present") return { bg: "#f1f5f9", border: "#cbd5e1", color: "#475569", label: "Present" };
+  return { bg: "#f1f5f9", border: "#cbd5e1", color: "#94a3b8", label: "Did not vote" };
+}
+
+function RepVotePanel({
+  vote, reps, position, onTakeAction,
+}: {
+  vote: BillVote;
+  reps: Representative[];
+  position: "support" | "oppose";
+  onTakeAction: () => void;
+}) {
+  // Senate votes have no per-member data via the API — degrade gracefully.
+  if (!vote.memberVotesAvailable) {
+    return (
+      <div style={{ padding: "12px 14px", borderRadius: 12, border: "1.5px solid #e6e2d8",
+        background: "white", marginBottom: 12 }}>
+        <p style={{ fontSize: 12.5, color: "#475569", lineHeight: 1.6, margin: 0,
+          fontFamily: "var(--font-dm-sans)" }}>
+          This bill had a recorded <strong>Senate</strong> roll-call vote. Individual senators&apos; votes
+          aren&apos;t available through the Congress.gov API —{" "}
+          <a href={vote.sourceUrl} target="_blank" rel="noopener noreferrer"
+            style={{ color: "#1e4080", fontWeight: 600 }}>see the official record</a>.
+        </p>
+      </div>
+    );
+  }
+
+  const total = vote.totals.yea + vote.totals.nay + vote.totals.present + vote.totals.notVoting;
+  const yeaPct = total > 0 ? (vote.totals.yea / total) * 100 : 0;
+  const votedReps = reps.filter(r => r.bioguideId && vote.repVotes[r.bioguideId]);
+  // Accountability: a rep voted opposite to the constituent's stated position.
+  const conflicted = votedReps.filter(r => {
+    const v = vote.repVotes[r.bioguideId!];
+    return (position === "support" && v === "Nay") || (position === "oppose" && v === "Yea");
+  });
+
+  return (
+    <div style={{ padding: "14px 16px", borderRadius: 12, border: "1.5px solid #e6e2d8",
+      background: "white", marginBottom: 12 }}>
+      {/* Overall result + tally */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#9ba8ba", textTransform: "uppercase",
+          letterSpacing: "0.08em", fontFamily: "var(--font-dm-sans)" }}>House roll call</span>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: "#0d1f3c",
+          fontFamily: "var(--font-dm-sans)" }}>
+          {vote.result || "Recorded"} · {vote.totals.yea}–{vote.totals.nay}
+        </span>
+      </div>
+      <div style={{ display: "flex", height: 7, borderRadius: 4, overflow: "hidden", marginBottom: 14,
+        background: "#e6e2d8" }}>
+        <div style={{ width: `${yeaPct}%`, background: "#22c55e" }} />
+        <div style={{ flex: 1, background: "#ef4444" }} />
+      </div>
+
+      {/* Per-rep votes */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {votedReps.length === 0 && (
+          <p style={{ fontSize: 12, color: "#7a8699", margin: 0, fontFamily: "var(--font-dm-sans)" }}>
+            None of your representatives voted on this particular roll call.
+          </p>
+        )}
+        {votedReps.map(r => {
+          const v = vote.repVotes[r.bioguideId!];
+          const s = voteStyle(v);
+          const party = r.party === "R" ? "#ef4444" : r.party === "D" ? "#3b82f6" : "#94a3b8";
+          return (
+            <div key={r.bioguideId} style={{ display: "flex", alignItems: "center",
+              justifyContent: "space-between", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: party, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#0d1f3c",
+                  fontFamily: "var(--font-dm-sans)", whiteSpace: "nowrap", overflow: "hidden",
+                  textOverflow: "ellipsis" }}>{r.name}</span>
+                <span style={{ fontSize: 11, color: "#9ba8ba", fontFamily: "var(--font-dm-sans)",
+                  flexShrink: 0 }}>{r.chamber === "Senate" ? "Sen." : "Rep."}</span>
+              </div>
+              <span style={{ fontSize: 11.5, fontWeight: 800, padding: "3px 10px", borderRadius: 99,
+                background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+                fontFamily: "var(--font-dm-sans)", flexShrink: 0, letterSpacing: "0.02em" }}>
+                {s.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Accountability hook */}
+      {conflicted.length > 0 && (
+        <motion.button onClick={onTakeAction}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          style={{ marginTop: 14, width: "100%", textAlign: "left", cursor: "pointer",
+            padding: "11px 13px", borderRadius: 10, border: "1.5px solid #e8c96a",
+            background: "#fdf6e3", display: "flex", alignItems: "center", gap: 10,
+            fontFamily: "var(--font-dm-sans)" }}>
+          <Flame size={16} strokeWidth={2} color="#b8830e" style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, lineHeight: 1.5, color: "#6b4f0a", flex: 1 }}>
+            {conflicted.length === 1
+              ? `${conflicted[0].name} voted against your position. `
+              : `${conflicted.length} of your reps voted against your position. `}
+            <strong>Tell them why it matters →</strong>
+          </span>
+        </motion.button>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 10 }}>
+        <BarChart2 size={11} color="#9ba8ba" strokeWidth={2} />
+        <span style={{ fontSize: 10, color: "#9ba8ba", fontFamily: "var(--font-dm-sans)" }}>
+          Official roll call ·{" "}
+          <a href={vote.sourceUrl} target="_blank" rel="noopener noreferrer"
+            style={{ color: "#9ba8ba", textDecoration: "underline" }}>clerk.house.gov</a>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Listen button (text-to-speech for accessibility) ───────────────────── */
+function ListenButton({ text, label = "Listen" }: { text: string; label?: string }) {
+  const [speaking, setSpeaking] = useState(false);
+  const [supported, setSupported] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setSupported(false);
+    }
+    // Stop any speech if this component unmounts (e.g. drawer closes / bill changes).
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const toggle = useCallback(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const synth = window.speechSynthesis;
+    if (speaking) {
+      synth.cancel();
+      setSpeaking(false);
+      return;
+    }
+    synth.cancel(); // clear any queued utterances first
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 0.97;
+    utter.pitch = 1;
+    utter.onend = () => setSpeaking(false);
+    utter.onerror = () => setSpeaking(false);
+    synth.speak(utter);
+    setSpeaking(true);
+  }, [speaking, text]);
+
+  if (!supported) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label={speaking ? "Stop reading aloud" : "Read this summary aloud"}
+      aria-pressed={speaking}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 5,
+        padding: "4px 10px", borderRadius: 999,
+        border: `1px solid ${speaking ? "#e8c96a" : "#e2e8f0"}`,
+        background: speaking ? "#fdf6e3" : "#fff",
+        color: speaking ? "#b8830e" : "#64748b",
+        fontSize: 11, fontWeight: 700, letterSpacing: "0.02em",
+        cursor: "pointer", fontFamily: "var(--font-dm-sans)",
+        textTransform: "none", transition: "all 0.15s",
+      }}
+    >
+      {speaking
+        ? <Square size={11} strokeWidth={2.5} fill="currentColor" />
+        : <Volume2 size={13} strokeWidth={2.2} />}
+      {speaking ? "Stop" : label}
+    </button>
+  );
+}
+
 /* ── Action Drawer ───────────────────────────────────────────────────────── */
 type ActionTab = "overview" | "perspectives" | "ask" | "act";
 type AskMsg = { role: "user" | "assistant"; content: string };
@@ -302,6 +485,8 @@ function ActionDrawer({
   const [summary, setSummary] = useState<BillSummary | null>(null);
   const [likelihood, setLikelihood] = useState<PassLikelihood | null>(null);
   const [prosCons, setProsCons] = useState<ProsCons | null>(null);
+  const [billVote, setBillVote] = useState<BillVote | null>(null);
+  const [loadingVote, setLoadingVote] = useState(true);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [actionRep, setActionRep] = useState<Representative | null>(reps[0] ?? null);
   const [position, setPosition] = useState<"support" | "oppose">("support");
@@ -371,6 +556,21 @@ function ActionDrawer({
         body: JSON.stringify(bill) }).then(r => r.json()).then(setProsCons),
     ]).finally(() => setLoadingSummary(false));
   }, [bill.id]);
+
+  // Fetch how the user's reps actually voted on this bill (accountability loop).
+  useEffect(() => {
+    setLoadingVote(true);
+    setBillVote(null);
+    const bioguideIds = reps.map(r => r.bioguideId).filter(Boolean) as string[];
+    fetch("/api/bill-vote", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bill, bioguideIds }),
+    })
+      .then(r => r.json())
+      .then(d => setBillVote(d?.vote ?? null))
+      .catch(() => setBillVote(null))
+      .finally(() => setLoadingVote(false));
+  }, [bill.id, reps]);
 
   async function handleLetter() {
     if (!actionRep) return;
@@ -490,7 +690,19 @@ function ActionDrawer({
             {/* Overview */}
             {infoTab === "overview" && (
               <motion.div key="overview" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <Label>Plain-English Summary</Label>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <Label>Plain-English Summary</Label>
+                  {summary && (
+                    <div style={{ marginBottom: 8 }}>
+                      <ListenButton
+                        text={[summary.plainEnglish,
+                          summary.whatItMeans ? `What this means for you. ${summary.whatItMeans}` : "",
+                          summary.districtImpact ? `District impact. ${summary.districtImpact}` : ""]
+                          .filter(Boolean).join(" ")}
+                      />
+                    </div>
+                  )}
+                </div>
                 {loadingSummary ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                     {[1, 0.85, 0.6, 0.9, 0.7].map((w, i) => (
@@ -530,6 +742,20 @@ function ActionDrawer({
                 {likelihood
                   ? <LikelihoodMeter data={likelihood} />
                   : <div className="skeleton" style={{ height: 90, borderRadius: 12, marginBottom: 12 }} />}
+
+                {/* How your reps voted — only shown when a roll-call vote exists */}
+                {loadingVote ? (
+                  <>
+                    <Label>How your reps voted</Label>
+                    <div className="skeleton" style={{ height: 110, borderRadius: 12, marginBottom: 12 }} />
+                  </>
+                ) : billVote ? (
+                  <>
+                    <Label>How your reps voted</Label>
+                    <RepVotePanel vote={billVote} reps={reps} position={position}
+                      onTakeAction={() => setInfoTab("act")} />
+                  </>
+                ) : null}
 
                 <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
                   <a href={bill.url} target="_blank" rel="noopener noreferrer"
