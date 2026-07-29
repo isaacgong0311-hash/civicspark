@@ -14,11 +14,13 @@ import type { Bill, BillSummary, BillVote, PassLikelihood, ProsCons, Representat
 import { useIsMobile } from "@/hooks/useIsMobile";
 import {
   getImpact, recordLetter, recordCall, recordBillExplored,
-  getWatchlistUpdates, markBillSeen, type ImpactStats,
+  getWatchlistUpdates, markBillSeen, getWatchlist, toggleWatchlistId,
+  type ImpactStats,
 } from "@/lib/activity";
+import { STAGE_LABELS } from "@/lib/stages";
 
 /* ── Stage config ────────────────────────────────────────────────────────── */
-const STAGES = ["Introduced", "In Committee", "Floor Ready", "Passed", "Signed"];
+const STAGES = STAGE_LABELS;
 
 /* Languages offered for inclusive, on-demand translated bill summaries. Kept in
    sync with SUMMARY_LANGUAGES in lib/ai.ts (not imported here to avoid pulling
@@ -1356,10 +1358,7 @@ export default function BillsPage() {
     } catch { /* ignore */ }
 
     // Load watchlist from localStorage
-    try {
-      const wl = localStorage.getItem("civicspark_watchlist");
-      if (wl) setWatchlist(new Set(JSON.parse(wl)));
-    } catch { /* ignore */ }
+    setWatchlist(getWatchlist());
 
     // Load this browser's own civic-impact history (letters/calls/bills explored)
     setImpact(getImpact());
@@ -1390,12 +1389,7 @@ export default function BillsPage() {
   }, [search]);
 
   const toggleWatchlist = useCallback((id: string) => {
-    setWatchlist(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      try { localStorage.setItem("civicspark_watchlist", JSON.stringify([...next])); } catch { /* ignore */ }
-      return next;
-    });
+    setWatchlist(prev => toggleWatchlistId(id, prev));
   }, []);
 
   // Watched bills that have advanced stage since the user last opened them.
@@ -1412,6 +1406,21 @@ export default function BillsPage() {
     setImpact(recordBillExplored(bill.id));
     setActiveBill(bill);
   }, []);
+
+  // Deep-link support: /bills?open=<billId> opens that bill's drawer directly,
+  // used by the My Bills dashboard's "Take Action" links.
+  const openedFromLinkRef = useRef(false);
+  useEffect(() => {
+    if (openedFromLinkRef.current || bills.length === 0) return;
+    const openId = new URLSearchParams(window.location.search).get("open");
+    if (!openId) return;
+    const target = bills.find(b => b.id === openId);
+    if (target) {
+      openedFromLinkRef.current = true;
+      openBill(target);
+      window.history.replaceState(null, "", "/bills");
+    }
+  }, [bills, openBill]);
 
   // Compute policy area counts from the base pool
   const policyAreas = useMemo(() => {

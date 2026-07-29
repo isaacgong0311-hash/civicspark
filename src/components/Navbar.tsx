@@ -10,7 +10,7 @@ const NAV_LINKS = [
   { href: "/bills", label: "Bills & Legislation" },
   { href: "/how-it-works", label: "How It Works" },
   { href: "/representatives", label: "My Representatives" },
-  { href: "/bills", label: "Watchlist", icon: BookMarked },
+  { href: "/my-bills", label: "My Bills", icon: BookMarked },
 ];
 
 export default function Navbar() {
@@ -115,13 +115,15 @@ export default function Navbar() {
                     </Link>
                   );
                 })}
-                <Link href="/bills" style={{
+                <Link href="/my-bills" style={{
                   padding: "6px 13px", borderRadius: 7, fontSize: 12.5, fontWeight: 600,
-                  textDecoration: "none", fontFamily: "var(--font-dm-sans)", color: "#7a8fa8",
+                  textDecoration: "none", fontFamily: "var(--font-dm-sans)",
+                  color: path === "/my-bills" ? "white" : "#7a8fa8",
+                  background: path === "/my-bills" ? "rgba(255,255,255,0.07)" : "transparent",
                   display: "flex", alignItems: "center", gap: 5, transition: "all 0.15s",
-                  borderBottom: "2px solid transparent",
+                  borderBottom: path === "/my-bills" ? "2px solid #b8830e" : "2px solid transparent",
                 }}>
-                  <BookMarked size={13} strokeWidth={2} /> Watchlist
+                  <BookMarked size={13} strokeWidth={2} /> My Bills
                 </Link>
               </div>
               <Link href="/bills" style={{
@@ -159,7 +161,7 @@ export default function Navbar() {
                 { href: "/bills", label: "Bills & Legislation" },
                 { href: "/representatives", label: "My Representatives" },
                 { href: "/how-it-works", label: "How It Works" },
-                { href: "/bills", label: "★ Watchlist" },
+                { href: "/my-bills", label: "★ My Bills" },
               ].map(({ href, label }) => (
                 <Link key={label} href={href}
                   onClick={() => setMenuOpen(false)}

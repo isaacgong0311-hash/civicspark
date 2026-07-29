@@ -8,6 +8,7 @@ import type { Bill, BillStage } from "./types";
 
 const IMPACT_KEY = "civicspark_impact";
 const SEEN_STAGES_KEY = "civicspark_seen_stages";
+const WATCHLIST_KEY = "civicspark_watchlist";
 
 export interface ImpactStats {
   letters: number;
@@ -83,11 +84,50 @@ export function markBillSeen(billId: string, stage: BillStage) {
   writeSeenStages(map);
 }
 
-export function getWatchlistUpdates(bills: Bill[], watchlist: Set<string>): Bill[] {
+export interface WatchlistUpdate {
+  bill: Bill;
+  fromStage: BillStage;
+}
+
+/** Watched bills that moved stage since the user last opened them, with the
+   stage they moved from (so the UI can show "Committee → Floor Ready"). */
+export function getWatchlistUpdateDetails(bills: Bill[], watchlist: Set<string>): WatchlistUpdate[] {
   const seen = readSeenStages();
-  return bills.filter(b => {
-    if (!watchlist.has(b.id)) return false;
+  const updates: WatchlistUpdate[] = [];
+  for (const b of bills) {
+    if (!watchlist.has(b.id)) continue;
     const prev = seen[b.id];
-    return prev != null && b.stage != null && prev !== b.stage;
-  });
+    if (prev != null && b.stage != null && prev !== b.stage) {
+      updates.push({ bill: b, fromStage: prev });
+    }
+  }
+  return updates;
+}
+
+export function getWatchlistUpdates(bills: Bill[], watchlist: Set<string>): Bill[] {
+  return getWatchlistUpdateDetails(bills, watchlist).map(u => u.bill);
+}
+
+/* ── Watchlist membership ─────────────────────────────────────────────────
+   Centralized here (rather than duplicated per page) since both the bills
+   browser and the My Bills dashboard read/write the same localStorage key. */
+
+export function getWatchlist(): Set<string> {
+  try {
+    const raw = localStorage.getItem(WATCHLIST_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function setWatchlistIds(ids: Set<string>) {
+  try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify([...ids])); } catch { /* ignore */ }
+}
+
+export function toggleWatchlistId(id: string, current: Set<string>): Set<string> {
+  const next = new Set(current);
+  next.has(id) ? next.delete(id) : next.add(id);
+  setWatchlistIds(next);
+  return next;
 }
