@@ -7,10 +7,15 @@ import {
   Loader2, Mail, Phone, Share2, ThumbsUp, ThumbsDown,
   Check, Copy, BookOpen, BarChart2, Flame, Sparkles,
   Star, Users, Calendar, SlidersHorizontal, Send, Volume2, Square, Languages,
+  TrendingUp, Bell,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import type { Bill, BillSummary, BillVote, PassLikelihood, ProsCons, Representative, VoteCast } from "@/lib/types";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import {
+  getImpact, recordLetter, recordCall, recordBillExplored,
+  getWatchlistUpdates, markBillSeen, type ImpactStats,
+} from "@/lib/activity";
 
 /* ── Stage config ────────────────────────────────────────────────────────── */
 const STAGES = ["Introduced", "In Committee", "Floor Ready", "Passed", "Signed"];
@@ -84,12 +89,13 @@ function partyDot(party?: string) {
 
 /* ── Bill Card ───────────────────────────────────────────────────────────── */
 function BillCard({
-  bill, onAction, starred, onStar,
+  bill, onAction, starred, onStar, updated,
 }: {
   bill: Bill;
   onAction: (b: Bill) => void;
   starred: boolean;
   onStar: (id: string) => void;
+  updated?: boolean;
 }) {
   const isNew = bill.urgency === "new";
   const isUrgent = bill.urgency === "urgent";
@@ -132,6 +138,15 @@ function BillCard({
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {updated && (
+            <span style={{
+              fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 5,
+              background: "#fdf3d7", color: "#8a5f00", border: "1px solid #e8c96a",
+              letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 3,
+            }}>
+              <TrendingUp size={9} strokeWidth={2.5} /> ADVANCED
+            </span>
+          )}
           {(isNew || isUrgent) && (
             <span style={{
               fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 5,
@@ -621,6 +636,7 @@ function ActionDrawer({
       body: JSON.stringify({ bill, rep: actionRep, position, personalNote: note }) });
     const d = await r.json();
     setLetter(d.letter);
+    if (d.letter) recordLetter();
     setGenLetter(false);
   }
 
@@ -631,6 +647,7 @@ function ActionDrawer({
       body: JSON.stringify({ bill, rep: actionRep, position, personalNote: note }) });
     const d = await r.json();
     setScript(d.script);
+    if (d.script) recordCall();
     setGenScript(false);
   }
 
@@ -1197,6 +1214,17 @@ function Label({ children, optional }: { children: React.ReactNode; optional?: b
   );
 }
 
+function ImpactChip({ icon: Icon, label }: { icon: ElementType; label: string }) {
+  return (
+    <span style={{
+      display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600,
+      color: "#1e4080", fontFamily: "var(--font-dm-sans)", whiteSpace: "nowrap",
+    }}>
+      <Icon size={12} strokeWidth={2} /> {label}
+    </span>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════════════════════ */
 /* Main page                                                                    */
 /* ════════════════════════════════════════════════════════════════════════════ */
@@ -1305,6 +1333,10 @@ export default function BillsPage() {
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
   const [showWatchlist, setShowWatchlist] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [impact, setImpact] = useState<ImpactStats>({ letters: 0, calls: 0, billsExplored: [] });
+  // Bumped whenever a bill is marked "seen" so the updated-bills memo (which
+  // reads seen-stage snapshots from localStorage) recomputes.
+  const [seenVersion, setSeenVersion] = useState(0);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMobile = useIsMobile();
 
@@ -1328,6 +1360,9 @@ export default function BillsPage() {
       const wl = localStorage.getItem("civicspark_watchlist");
       if (wl) setWatchlist(new Set(JSON.parse(wl)));
     } catch { /* ignore */ }
+
+    // Load this browser's own civic-impact history (letters/calls/bills explored)
+    setImpact(getImpact());
   }, []);
 
   // Debounced server-side search
@@ -1361,6 +1396,21 @@ export default function BillsPage() {
       try { localStorage.setItem("civicspark_watchlist", JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
+  }, []);
+
+  // Watched bills that have advanced stage since the user last opened them.
+  const updatedBills = useMemo(
+    () => getWatchlistUpdates(bills, watchlist),
+    [bills, watchlist, seenVersion],
+  );
+
+  // Opening a bill acknowledges its current stage (clearing any "advanced" badge)
+  // and logs it as explored for the civic-impact tally.
+  const openBill = useCallback((bill: Bill) => {
+    markBillSeen(bill.id, bill.stage ?? 1);
+    setSeenVersion(v => v + 1);
+    setImpact(recordBillExplored(bill.id));
+    setActiveBill(bill);
   }, []);
 
   // Compute policy area counts from the base pool
@@ -1451,9 +1501,14 @@ export default function BillsPage() {
               >
                 <Star size={13} fill={showWatchlist ? "#fde68a" : "none"} strokeWidth={2} />
                 Watchlist {watchlist.size > 0 && `(${watchlist.size})`}
+                {updatedBills.length > 0 && (
+                  <span aria-label={`${updatedBills.length} watched bills advanced`}
+                    style={{ width: 7, height: 7, borderRadius: "50%", background: "#e8c96a",
+                      boxShadow: "0 0 0 2px rgba(232,201,106,0.3)", flexShrink: 0 }} />
+                )}
               </motion.button>
               <motion.button
-                onClick={() => setActiveBill(filtered[0] ?? null)}
+                onClick={() => { if (filtered[0]) openBill(filtered[0]); }}
                 style={{ padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 700,
                   border: "none", cursor: "pointer", background: "#b8830e", color: "white",
                   fontFamily: "var(--font-dm-sans)", display: "flex", alignItems: "center", gap: 6,
@@ -1501,6 +1556,63 @@ export default function BillsPage() {
           </div>
         </div>
       </div>
+
+      {/* Your civic impact — real, personal tallies from this browser's own
+          activity. No community-wide numbers are shown here, since we have
+          no backend to honestly back them. */}
+      {(impact.letters > 0 || impact.calls > 0 || impact.billsExplored.length > 0 || watchlist.size > 0) && (
+        <div style={{ background: "#eef3fb", borderBottom: "1px solid #d7e3f5" }}>
+          <div style={{
+            maxWidth: 1200, margin: "0 auto",
+            padding: isMobile ? "10px 16px" : "10px 28px",
+            display: "flex", alignItems: "center", gap: isMobile ? 12 : 20, flexWrap: "wrap",
+          }}>
+            <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.08em",
+              textTransform: "uppercase", color: "#1e4080", fontFamily: "var(--font-dm-sans)",
+              flexShrink: 0 }}>
+              Your civic impact
+            </span>
+            {watchlist.size > 0 && (
+              <ImpactChip icon={Star} label={`${watchlist.size} bill${watchlist.size !== 1 ? "s" : ""} watched`} />
+            )}
+            {impact.billsExplored.length > 0 && (
+              <ImpactChip icon={BookOpen} label={`${impact.billsExplored.length} bill${impact.billsExplored.length !== 1 ? "s" : ""} explored`} />
+            )}
+            {impact.letters > 0 && (
+              <ImpactChip icon={Mail} label={`${impact.letters} letter${impact.letters !== 1 ? "s" : ""} sent`} />
+            )}
+            {impact.calls > 0 && (
+              <ImpactChip icon={Phone} label={`${impact.calls} call script${impact.calls !== 1 ? "s" : ""}`} />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Watchlist alert — surfaces when a tracked bill has moved stage
+          since the user last opened it. */}
+      {!showWatchlist && !loading && updatedBills.length > 0 && (
+        <div style={{ background: "#fdf6e3", borderBottom: "1px solid #e8c96a" }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "10px 16px" : "10px 28px" }}>
+            <button
+              onClick={() => setShowWatchlist(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, width: "100%",
+                background: "none", border: "none", cursor: "pointer", padding: 0,
+                fontFamily: "var(--font-dm-sans)", textAlign: "left",
+              }}
+            >
+              <Bell size={14} strokeWidth={2} color="#b8830e" style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 12.5, color: "#6b4f0a", flex: 1 }}>
+                <strong>{updatedBills.length} bill{updatedBills.length !== 1 ? "s" : ""} on your watchlist</strong>{" "}
+                {updatedBills.length === 1 ? "has" : "have"} advanced since you last checked.
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#b8830e", flexShrink: 0 }}>
+                View watchlist →
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main content */}
       <div style={{
@@ -1661,9 +1773,10 @@ export default function BillsPage() {
               <BillCard
                 key={bill.id}
                 bill={bill}
-                onAction={setActiveBill}
+                onAction={openBill}
                 starred={watchlist.has(bill.id)}
                 onStar={toggleWatchlist}
+                updated={updatedBills.some(u => u.id === bill.id)}
               />
             ))
           )}
@@ -1677,7 +1790,7 @@ export default function BillsPage() {
           <ActionDrawer
             bill={activeBill}
             reps={reps}
-            onClose={() => setActiveBill(null)}
+            onClose={() => { setActiveBill(null); setImpact(getImpact()); }}
           />
         )}
       </AnimatePresence>
