@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MapPin, Phone, ExternalLink, ArrowRight, Loader2,
@@ -9,6 +10,7 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import type { Representative, Bill, MemberDetail } from "@/lib/types";
+import { fetchJSON, postJSON } from "@/lib/fetchJSON";
 
 function partyColor(party: string) {
   if (party === "R") return "#ef4444";
@@ -91,22 +93,17 @@ function RepCard({ rep }: { rep: Representative }) {
   async function handleToggleLegislation() {
     if (!showLegislation && !detailLoaded && rep.bioguideId) {
       setLoadingDetail(true);
-      try {
-        const res = await fetch(`/api/member/${rep.bioguideId}`);
-        if (res.ok) {
-          const data: MemberDetail = await res.json();
-          setMemberDetail(data);
-        }
-      } catch { /* ignore */ } finally {
-        setLoadingDetail(false);
-        setDetailLoaded(true);
-      }
+      const data = await fetchJSON<MemberDetail>(`/api/member/${rep.bioguideId}`);
+      if (data) setMemberDetail(data);
+      setLoadingDetail(false);
+      setDetailLoaded(true);
     }
     setShowLegislation(v => !v);
   }
 
   const pc = partyColor(rep.party);
-  const hasPhoto = !!rep.photoUrl;
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const hasPhoto = !!rep.photoUrl && !photoFailed;
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -120,23 +117,13 @@ function RepCard({ rep }: { rep: Representative }) {
           <div style={{ width: 56, height: 56, borderRadius: 14, flexShrink: 0, overflow: "hidden",
             border: `2px solid ${pc}44`, position: "relative" }}>
             {hasPhoto ? (
-              <img
-                src={rep.photoUrl}
+              <Image
+                src={rep.photoUrl as string}
                 alt={rep.name}
                 width={56}
                 height={56}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                onError={e => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                  const parent = (e.target as HTMLImageElement).parentElement;
-                  if (parent) {
-                    parent.style.background = `linear-gradient(135deg, ${pc}22, ${pc}44)`;
-                    parent.style.display = "flex";
-                    parent.style.alignItems = "center";
-                    parent.style.justifyContent = "center";
-                    parent.innerHTML = `<span style="font-size:22px;font-weight:700;color:${pc};font-family:var(--font-playfair)">${rep.name.split(" ").pop()?.charAt(0) ?? "?"}</span>`;
-                  }
-                }}
+                onError={() => setPhotoFailed(true)}
               />
             ) : (
               <div style={{
@@ -335,24 +322,21 @@ function RepresentativesContent() {
 
   async function fetchReps(z: string) {
     setLoading(true); setError("");
-    try {
-      const r = await fetch("/api/reps", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zip: z }),
-      });
-      const d = await r.json();
-      setReps(d.representatives ?? []);
-      setState(d.state ?? "");
-      setZip(z);
-      setLive(d.live ?? false);
-      sessionStorage.setItem("civicspark_reps", JSON.stringify({ ...d, zip: z }));
-      setSearched(true);
-    } catch {
+    const d = await postJSON<{ representatives?: Representative[]; state?: string; live?: boolean }>(
+      "/api/reps", { zip: z },
+    );
+    if (!d) {
       setError("Couldn't look up that ZIP. Please try again.");
-    } finally {
       setLoading(false);
+      return;
     }
+    setReps(d.representatives ?? []);
+    setState(d.state ?? "");
+    setZip(z);
+    setLive(d.live ?? false);
+    sessionStorage.setItem("civicspark_reps", JSON.stringify({ ...d, zip: z }));
+    setSearched(true);
+    setLoading(false);
   }
 
   function handleSubmit(e: React.FormEvent) {

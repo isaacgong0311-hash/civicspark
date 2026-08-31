@@ -152,7 +152,8 @@ export async function getBillVote(
       };
     }
     return null;
-  } catch {
+  } catch (err) {
+    console.error("getBillVote failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -200,6 +201,25 @@ function matchIssues(bill: { title: string; policyArea?: string }, issueIds: str
 }
 
 /* ── Convert raw API bill to local Bill shape ────────────────────────────── */
+function billUrl(b: CongressApiBill): string {
+  if (b.url?.includes("api.congress.gov/v3")) {
+    return b.url.replace("api.congress.gov/v3", "www.congress.gov");
+  }
+  // Construct the canonical public URL directly rather than falling back to
+  // the generic homepage, so a bad/missing API url never produces a dead link.
+  return `https://www.congress.gov/bill/${b.congress}th-congress/${congressGovBillPath(b.type)}/${b.number}`;
+}
+
+function congressGovBillPath(type: string): string {
+  const map: Record<string, string> = {
+    HR: "house-bill", S: "senate-bill",
+    HJRES: "house-joint-resolution", SJRES: "senate-joint-resolution",
+    HCONRES: "house-concurrent-resolution", SCONRES: "senate-concurrent-resolution",
+    HRES: "house-resolution", SRES: "senate-resolution",
+  };
+  return map[type.toUpperCase()] ?? "house-bill";
+}
+
 function apiBillToLocal(b: CongressApiBill): Bill {
   const latestAction = b.latestAction?.text ?? "No recorded action";
   const latestActionDate = b.latestAction?.actionDate ?? "";
@@ -211,12 +231,12 @@ function apiBillToLocal(b: CongressApiBill): Bill {
     title: b.title,
     latestAction,
     latestActionDate,
-    url: b.url?.replace("api.congress.gov/v3", "www.congress.gov") ?? "https://www.congress.gov",
+    url: billUrl(b),
     policyArea: b.policyArea?.name,
     matchedIssues: [],
     stage: inferStage(latestAction),
     urgency: inferUrgency(latestActionDate, latestAction),
-    sponsorName: b.sponsors?.[0]?.fullName,
+    sponsorName: b.sponsors?.[0]?.fullName?.trim() || undefined,
     sponsorParty: b.sponsors?.[0]?.party,
     cosponsors: typeof b.cosponsors === "number" ? b.cosponsors : undefined,
     introducedDate: b.introducedDate,
@@ -240,7 +260,8 @@ export async function getRelevantBills(issueIds: string[]): Promise<{ bills: Bil
     try {
       pool = await fetchFromApi(apiKey);
       live = true;
-    } catch {
+    } catch (err) {
+      console.error("Congress API unreachable, falling back to sample bills:", err instanceof Error ? err.message : err);
       pool = MOCK_BILLS;
     }
   } else {
@@ -285,8 +306,8 @@ export async function searchBills(
     if (!res.ok) throw new Error(`Congress API ${res.status}`);
     const data = (await res.json()) as { bills: CongressApiBill[] };
     return { bills: (data.bills ?? []).map(apiBillToLocal), live: true };
-  } catch {
-    // Client-side fallback
+  } catch (err) {
+    console.error("Congress API search failed, falling back to sample bills:", err instanceof Error ? err.message : err);
     return {
       bills: MOCK_BILLS.filter((b) =>
         b.title.toLowerCase().includes(q.toLowerCase()) ||
@@ -354,7 +375,8 @@ export async function getMemberDetail(bioguideId: string): Promise<MemberDetail 
       sponsoredCount,
       recentBills,
     };
-  } catch {
+  } catch (err) {
+    console.error("getMemberDetail failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }

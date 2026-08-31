@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { askBill, type AskTurn } from "@/lib/ai";
 import type { Bill } from "@/lib/types";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
+  if (!checkRateLimit(req)) return rateLimitResponse();
   const { bill, question, history } = await req.json() as {
     bill: Bill;
     question: string;

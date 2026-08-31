@@ -18,6 +18,7 @@ import {
   type ImpactStats,
 } from "@/lib/activity";
 import { STAGE_LABELS } from "@/lib/stages";
+import { fetchJSON, postJSON } from "@/lib/fetchJSON";
 
 /* ── Stage config ────────────────────────────────────────────────────────── */
 const STAGES = STAGE_LABELS;
@@ -548,15 +549,41 @@ function ActionDrawer({
   const [askInput, setAskInput] = useState("");
   const [askLoading, setAskLoading] = useState(false);
   const askScrollRef = useRef<HTMLDivElement | null>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
 
   // Reset the conversation and language when switching bills.
   useEffect(() => { setAskMsgs([]); setAskInput(""); setLanguage("en"); }, [bill.id]);
 
-  // Keyboard: close the drawer on Escape (standard dialog behavior).
+  // Keyboard: close the drawer on Escape, and trap Tab focus inside the
+  // drawer so keyboard/screen-reader users can't tab out to the page behind it.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    drawerRef.current?.focus();
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab" || !drawerRef.current) return;
+
+      const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      previouslyFocused?.focus();
+    };
   }, [onClose]);
 
   // Keep the latest message in view as the conversation grows.
@@ -572,14 +599,10 @@ function ActionDrawer({
     setAskInput("");
     setAskLoading(true);
     try {
-      const r = await fetch("/api/ask", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bill, question: q, history }),
-      });
-      const d = await r.json();
+      const d = await postJSON<{ answer?: string }>("/api/ask", { bill, question: q, history });
       setAskMsgs(prev => [...prev, {
         role: "assistant",
-        content: typeof d.answer === "string" && d.answer
+        content: typeof d?.answer === "string" && d.answer
           ? d.answer
           : "Sorry — I couldn't answer that just now. Please try again.",
       }]);
@@ -595,12 +618,8 @@ function ActionDrawer({
 
   // Likelihood + perspectives depend only on the bill itself.
   useEffect(() => {
-    Promise.allSettled([
-      fetch("/api/likelihood", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bill) }).then(r => r.json()).then(setLikelihood),
-      fetch("/api/proscons", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bill) }).then(r => r.json()).then(setProsCons),
-    ]);
+    postJSON<PassLikelihood>("/api/likelihood", bill).then(d => { if (d) setLikelihood(d); });
+    postJSON<ProsCons>("/api/proscons", bill).then(d => { if (d) setProsCons(d); });
   }, [bill.id]);
 
   // The plain-English summary is re-fetched whenever the reader picks a new
@@ -608,11 +627,8 @@ function ActionDrawer({
   useEffect(() => {
     setLoadingSummary(true);
     setSummary(null);
-    fetch("/api/summarize", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bill, language }) })
-      .then(r => r.json())
-      .then(setSummary)
-      .catch(() => setSummary(null))
+    postJSON<BillSummary>("/api/summarize", { bill, language })
+      .then(d => setSummary(d))
       .finally(() => setLoadingSummary(false));
   }, [bill.id, language]);
 
@@ -621,35 +637,26 @@ function ActionDrawer({
     setLoadingVote(true);
     setBillVote(null);
     const bioguideIds = reps.map(r => r.bioguideId).filter(Boolean) as string[];
-    fetch("/api/bill-vote", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bill, bioguideIds }),
-    })
-      .then(r => r.json())
+    postJSON<{ vote?: BillVote | null }>("/api/bill-vote", { bill, bioguideIds })
       .then(d => setBillVote(d?.vote ?? null))
-      .catch(() => setBillVote(null))
       .finally(() => setLoadingVote(false));
   }, [bill.id, reps]);
 
   async function handleLetter() {
     if (!actionRep) return;
     setGenLetter(true); setLetter("");
-    const r = await fetch("/api/letter", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bill, rep: actionRep, position, personalNote: note }) });
-    const d = await r.json();
-    setLetter(d.letter);
-    if (d.letter) recordLetter();
+    const d = await postJSON<{ letter?: string }>("/api/letter", { bill, rep: actionRep, position, personalNote: note });
+    setLetter(d?.letter ?? "");
+    if (d?.letter) recordLetter();
     setGenLetter(false);
   }
 
   async function handleScript() {
     if (!actionRep) return;
     setGenScript(true); setScript("");
-    const r = await fetch("/api/script", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bill, rep: actionRep, position, personalNote: note }) });
-    const d = await r.json();
-    setScript(d.script);
-    if (d.script) recordCall();
+    const d = await postJSON<{ script?: string }>("/api/script", { bill, rep: actionRep, position, personalNote: note });
+    setScript(d?.script ?? "");
+    if (d?.script) recordCall();
     setGenScript(false);
   }
 
@@ -677,15 +684,26 @@ function ActionDrawer({
 
       {/* Drawer */}
       <motion.aside
+        ref={drawerRef}
+        tabIndex={-1}
         initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
         transition={{ type: "spring", damping: 30, stiffness: 280 }}
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0, width: "min(520px, 100vw)",
           background: "#f4f2ee", zIndex: 201, display: "flex", flexDirection: "column",
           overflowY: "auto", boxShadow: "-8px 0 40px rgba(6,14,31,0.2)",
+          outline: "none",
         }}
         role="dialog" aria-modal aria-label={`Take action on ${bill.type} ${bill.number}`}
       >
+        {/* Announces the active tab to screen-reader users on every switch. */}
+        <div aria-live="polite" className="sr-only">
+          {infoTab === "overview" && "Overview tab selected"}
+          {infoTab === "perspectives" && "Perspectives tab selected"}
+          {infoTab === "ask" && "Ask AI tab selected"}
+          {infoTab === "act" && "Take Action tab selected"}
+        </div>
+
         {/* Drawer header */}
         <div style={{ background: "#0d1f3c", padding: "20px 24px", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
@@ -1343,9 +1361,8 @@ export default function BillsPage() {
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    fetch("/api/bills/all")
-      .then(r => r.json())
-      .then(d => { setBills(d.bills); setLive(d.live); })
+    fetchJSON<{ bills: Bill[]; live: boolean }>("/api/bills/all")
+      .then(d => { if (d) { setBills(d.bills); setLive(d.live); } })
       .finally(() => setLoading(false));
 
     // Load reps from sessionStorage
@@ -1371,14 +1388,12 @@ export default function BillsPage() {
     if (search.length >= 3) {
       setSearching(true);
       searchTimerRef.current = setTimeout(async () => {
-        try {
-          const res = await fetch(`/api/bills/search?q=${encodeURIComponent(search)}&limit=30`);
-          const d = await res.json();
-          setSearchResults(d.bills ?? []);
-          if (d.live) setLive(true);
-        } catch { /* ignore */ } finally {
-          setSearching(false);
-        }
+        const d = await fetchJSON<{ bills: Bill[]; live: boolean }>(
+          `/api/bills/search?q=${encodeURIComponent(search)}&limit=30`,
+        );
+        setSearchResults(d?.bills ?? []);
+        if (d?.live) setLive(true);
+        setSearching(false);
       }, 500);
     } else {
       setSearchResults(null);
@@ -1486,8 +1501,9 @@ export default function BillsPage() {
               </span>
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#8da4c4",
                 fontFamily: "var(--font-dm-sans)" }}>
-                <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e",
-                  boxShadow: "0 0 0 2px rgba(34,197,94,0.25)" }} />
+                <div style={{ width: 7, height: 7, borderRadius: "50%",
+                  background: live ? "#22c55e" : "#94a3b8",
+                  boxShadow: live ? "0 0 0 2px rgba(34,197,94,0.25)" : "none" }} />
                 {live ? "Live — Congress.gov" : "Sample data"}
               </div>
               <span style={{ fontSize: 12.5, color: "#8da4c4", fontFamily: "var(--font-dm-sans)" }}>

@@ -12,14 +12,14 @@
 
 CivicSpark turns the intimidating process of engaging with Congress into something anyone can do in under a minute. You enter your ZIP code and the app identifies your House representative and two senators with live profile data — photo, party, and official contact info — pulled from the Congress.gov Members API.
 
-From there you can browse real legislation, fetched in real time from the Congress.gov REST API and sorted by latest activity. For any bill, CivicSpark uses a large language model (Llama 3.3-70B served via Groq) to generate:
+From there you can browse real legislation, fetched in real time from the Congress.gov REST API and sorted by latest activity. For any bill, CivicSpark uses a large language model (GPT-OSS-120B served via Groq) to generate:
 
 - a **plain-English summary** of what the bill actually does,
 - an **AI pass-likelihood estimate** with a rationale, based on the bill's legislative stage, policy area, sponsor history, and cosponsor count,
 - **three balanced arguments for and three against**, written to be strictly nonpartisan, and
 - a **ready-to-send constituent letter or phone-call script** addressed to your specific representative, reflecting your stated position and an optional personal note.
 
-You can also search the full text of legislation, star bills to a personal watchlist, and view each lawmaker's recently sponsored bills. Everything works without creating an account.
+You can also search the full text of legislation, star bills to a personal watchlist, and view each lawmaker's recently sponsored bills. Bill summaries can be translated into multiple languages or read aloud for accessibility, and for bills that have already come to a vote, CivicSpark shows the full roll-call record so you can see exactly how your own representative voted — real accountability, not just talking points. A dedicated My Bills dashboard tracks everything you've watched or acted on and turns it into a personal civic-impact record (letters sent, calls made), all stored locally in your browser. Everything works without creating an account.
 
 ---
 
@@ -44,7 +44,7 @@ I also had to design the prompts carefully to keep the model genuinely nonpartis
 - **TypeScript** (strict mode) as the primary language, end to end
 - **Next.js 16** (App Router) with React 19 — server components, API routes, and the Turbopack bundler
 - **Congress.gov REST API v3** for live bill data, member lookup, sponsored legislation, and full-text search
-- **Groq inference API running Meta's Llama 3.3-70B** for all generative features
+- **Groq inference API running an open-weight GPT-OSS-120B model** for all generative features
 - **Framer Motion** for animations and transitions
 - **Lucide React** for iconography
 - **Vercel** for production deployment, edge CDN, and per-commit preview builds
@@ -59,6 +59,8 @@ I also had to design the prompts carefully to keep the model genuinely nonpartis
 - Working with a real **government REST API**, including pagination, rate limiting, and normalizing messy real-world data
 - Building a **fully responsive UI** with a mobile filter drawer, hamburger navigation, and layouts that adapt from desktop to phone
 - **Server components and API routes** in the Next.js App Router, and deploying a full-stack TypeScript app to the edge on Vercel
+- Building **accessibility features that are genuinely useful, not checkbox compliance** — text-to-speech read-aloud via the Web Speech API, keyboard focus trapping and `aria-live` announcements in the action drawer, and on-demand summary translation
+- Designing a **local-first accountability feature** — matching roll-call vote records to a user's own representative, and computing an honest, per-browser civic-impact tally instead of a fabricated aggregate number
 
 ---
 

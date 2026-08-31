@@ -1,13 +1,18 @@
 import Groq from "groq-sdk";
 import type { Bill, BillSummary, PassLikelihood, ProsCons, Representative } from "./types";
 
-const MODEL = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
-const TIMEOUT_MS = 9000;
+// Groq periodically retires model IDs; llama-3.3-70b-versatile was removed from
+// their catalog (verified via GET /v1/models — 404 model_not_found), which was
+// silently degrading every AI feature to its neutral fallback text. gpt-oss-120b
+// is the current largest/most capable general chat model on Groq and handles
+// json_object mode correctly at our token budgets.
+const MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
+const TIMEOUT_MS = 18000;
 
 function getClient(): Groq | null {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
-  return new Groq({ apiKey, timeout: TIMEOUT_MS, maxRetries: 1 });
+  return new Groq({ apiKey, timeout: TIMEOUT_MS, maxRetries: 2 });
 }
 
 function strip(text: string): string {
@@ -55,7 +60,8 @@ async function chatJSON<T>(
     });
     const raw = chat.choices[0]?.message?.content ?? "";
     return JSON.parse(strip(raw)) as T;
-  } catch {
+  } catch (err) {
+    console.error("Groq chatJSON failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -77,7 +83,8 @@ async function chatText(
       ],
     });
     return chat.choices[0]?.message?.content?.trim() || null;
-  } catch {
+  } catch (err) {
+    console.error("Groq chatText failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -150,7 +157,7 @@ export async function summarizeBill(
       `{"plainEnglish":"1-2 sentence plain explanation",` +
       ` "whatItMeans":"1-2 sentences on how it affects an ordinary person",` +
       ` "districtImpact":"1-2 concrete sentences on how this specifically could affect ${location}"}`,
-    { maxTokens: 800, temperature: 0.3 },
+    { maxTokens: 1100, temperature: 0.3 },
   );
 
   if (!json || !json.plainEnglish) return fallbackSummary(bill);
@@ -191,7 +198,7 @@ export async function generateProsCons(bill: Bill): Promise<ProsCons> {
       ` "cons":["3 distinct arguments AGAINST this bill, each under 20 words"],` +
       ` "supporterView":"1 sentence on who typically supports this and why",` +
       ` "opposerView":"1 sentence on who typically opposes this and why"}`,
-    { maxTokens: 700, temperature: 0.4 },
+    { maxTokens: 1000, temperature: 0.4 },
   );
 
   const pros = Array.isArray(json?.pros) ? json!.pros.filter(Boolean).slice(0, 3) : [];
@@ -231,7 +238,7 @@ export async function predictPassLikelihood(bill: Bill): Promise<PassLikelihood>
       `Return JSON:\n` +
       `{"percent":NUMBER_0_TO_100,"label":"Unlikely|Possible|Likely|Very Likely",` +
       `"rationale":"1-2 sentences explaining the estimate"}`,
-    { maxTokens: 300, temperature: 0.2 },
+    { maxTokens: 400, temperature: 0.2 },
   );
 
   if (!json || json.percent == null || Number.isNaN(Number(json.percent))) {
@@ -270,7 +277,7 @@ export async function generateLetter(
       `The constituent ${position}s ${bill.type} ${bill.number}: "${bill.title}".\n` +
       (note ? `Personal note to weave in naturally: ${note}\n` : "") +
       `Make it sound like a real person wrote it, not a form letter.`,
-    { maxTokens: 700, temperature: 0.6 },
+    { maxTokens: 900, temperature: 0.6 },
   );
 
   return text ?? fallbackLetter(bill, rep, position, personalNote);
@@ -299,7 +306,7 @@ export async function generateCallScript(
       `Position: ${position}\n` +
       (note ? `Personal context: ${note}\n` : "") +
       `Keep it under 120 words, casual and confident.`,
-    { maxTokens: 500, temperature: 0.6 },
+    { maxTokens: 650, temperature: 0.6 },
   );
 
   return text ?? fallbackCallScript(bill, rep, position);
@@ -343,7 +350,7 @@ export async function askBill(
   try {
     const chat = await client.chat.completions.create({
       model: MODEL,
-      max_tokens: 500,
+      max_tokens: 650,
       temperature: 0.3,
       messages: [
         {
@@ -364,7 +371,8 @@ export async function askBill(
       ],
     });
     return chat.choices[0]?.message?.content?.trim() || ASK_REFUSAL;
-  } catch {
+  } catch (err) {
+    console.error("Groq askBill failed:", err instanceof Error ? err.message : err);
     return ASK_REFUSAL;
   }
 }

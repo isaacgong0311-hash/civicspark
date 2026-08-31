@@ -11,6 +11,7 @@ import Navbar from "@/components/Navbar";
 import type { Bill } from "@/lib/types";
 import { MOCK_BILLS } from "@/lib/congress";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { fetchJSON, postJSON } from "@/lib/fetchJSON";
 
 const STAGE_LABELS = ["Intro", "Cmte", "Floor", "Passed", "Law"];
 
@@ -118,20 +119,15 @@ export default function LandingPage() {
     if (!/^\d{5}$/.test(zip.trim())) { setError("Enter a valid 5-digit ZIP code."); return; }
     setError("");
     setLoading(true);
-    try {
-      const r = await fetch("/api/reps", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zip: zip.trim() }),
-      });
-      const d = await r.json();
-      sessionStorage.setItem("civicspark_reps", JSON.stringify(d));
-      router.push(`/representatives?zip=${zip.trim()}`);
-    } catch {
+    const d = await postJSON<unknown>("/api/reps", { zip: zip.trim() });
+    if (!d) {
       setError("Couldn't look up that ZIP. Please try again.");
-    } finally {
       setLoading(false);
+      return;
     }
+    sessionStorage.setItem("civicspark_reps", JSON.stringify(d));
+    router.push(`/representatives?zip=${zip.trim()}`);
+    setLoading(false);
   }
 
   // Pull the latest real bills from Congress.gov so the homepage showcase is
@@ -141,18 +137,11 @@ export default function LandingPage() {
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const r = await fetch("/api/bills/all");
-        if (!r.ok) return;
-        const d = (await r.json()) as { bills?: Bill[] };
-        if (active && Array.isArray(d.bills) && d.bills.length >= 4) {
-          setFeatured(d.bills.slice(0, 4));
-        }
-      } catch {
-        /* keep fallback bills */
+    fetchJSON<{ bills?: Bill[] }>("/api/bills/all").then(d => {
+      if (active && d && Array.isArray(d.bills) && d.bills.length >= 4) {
+        setFeatured(d.bills.slice(0, 4));
       }
-    })();
+    });
     return () => { active = false; };
   }, []);
 
@@ -508,7 +497,7 @@ export default function LandingPage() {
           </div>
           <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#4b5f7a",
             fontFamily: "var(--font-dm-sans)", flexWrap: "wrap" }}>
-            <span>AI by Groq (Llama 3.3-70B)</span>
+            <span>AI by Groq (GPT-OSS-120B)</span>
             <span>·</span>
             <span>Data: Congress.gov API v3</span>
             <span>·</span>

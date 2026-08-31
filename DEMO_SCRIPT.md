@@ -1,6 +1,6 @@
 # CivicSpark — Demo Video Script
 
-**Target length:** ~2:00 (CAC allows up to 3 min — shorter and tighter scores better)
+**Target length:** ~2:30–2:45 (CAC allows up to 3 min — shorter and tighter scores better)
 **Format:** Screen recording of `civicspark.vercel.app` with voiceover. Record at 1280×720 or 1080p.
 **Tone:** Confident, conversational. Talk like you're showing a friend, not reading a paper.
 
@@ -50,22 +50,30 @@
 
 ---
 
-### Scene 6 — Close + tech  (1:55–2:10)
+### Scene 6 — Follow through: My Bills & accountability  (1:55–2:25)
+**On screen:** Go to the My Bills page. Show the dashboard: watchlisted bills and the civic-impact tracker (letters sent, calls made). Expand a bill card's roll-call vote panel to show how your specific rep voted. Tap the "listen" icon on a summary to show read-aloud starting. If visible, switch a bill summary to another language.
+
+**Say:**
+> "CivicSpark also remembers you. My Bills tracks every bill I've watched or acted on, and turns that into a personal civic-impact record — letters sent, calls made — all stored right in my browser, no account needed. I can see exactly how my representative voted on a bill to hold them accountable, and if reading isn't the easiest way for me to take this in, I can have any summary read aloud, or translated into another language."
+
+---
+
+### Scene 7 — Close + tech  (2:25–2:45)
 **On screen:** Zoom back out to the landing page or the How It Works page showing the tech stack.
 
 **Say:**
-> "CivicSpark is built with Next.js, TypeScript, and React, on live data from the Congress.gov API, with AI powered by Llama running on Groq. It's nonpartisan by design, works on your phone, and needs no account. My goal was simple: make it so anyone — a student, a first-time voter, anyone — can feel like participating in democracy is actually within reach. Thanks for watching."
+> "CivicSpark is built with Next.js, TypeScript, and React, on live data from the Congress.gov API, with AI running on Groq. It's nonpartisan by design, works on your phone, and needs no account. My goal was simple: make it so anyone — a student, a first-time voter, anyone — can feel like participating in democracy is actually within reach. Thanks for watching."
 
 ---
 
 ## Recording tips
 - **Do a dry run first** so the AI sections are warm/cached — you don't want to narrate over a long spinner. If a generation is slow, you can lightly trim/cut in editing.
-- **Pre-pick your examples:** decide the ZIP code and the exact bill you'll open before you hit record, so the demo is smooth.
+- **Pre-pick your examples:** decide the ZIP code and the exact bill you'll open before you hit record, so the demo is smooth. For Scene 6, watchlist/act on a bill or two beforehand so My Bills isn't empty.
 - **Keep the cursor calm** — move deliberately, don't jitter. Pause ~1 second after each click so viewers can see the result.
 - **Show, don't just tell:** every claim in the voiceover should have something happening on screen at that moment.
 - **Audio matters more than video.** Record the voiceover in a quiet room; clean narration beats a fancy screen capture.
-- **End under 3:00.** If you run long, cut Scene 2 or 3 down — never cut the AI demo (Scene 4) or the action step (Scene 5); those are the heart of the app.
+- **End under 3:00.** If you run long, cut Scene 2 or 3 down, or trim Scene 6 to just the impact tracker — never cut the AI demo (Scene 4) or the action step (Scene 5); those are the heart of the app.
 - **Verify before final cut:** make sure no API errors or blank states appear on screen. If the live API hiccups, re-record that segment.
 
 ## Optional 60-second version (if a shorter cut is needed)
-Hook (problem) → ZIP lookup → open a bill, show the plain-English summary + pros/cons → generate the letter → one closing line with the tech. Drop search, watchlist, and pass-likelihood to save time.
+Hook (problem) → ZIP lookup → open a bill, show the plain-English summary + pros/cons → generate the letter → one closing line with the tech. Drop search, watchlist, My Bills, and pass-likelihood to save time.

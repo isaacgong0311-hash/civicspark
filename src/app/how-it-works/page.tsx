@@ -23,7 +23,7 @@ const STEPS = [
   {
     n: "03", Icon: BarChart2,
     title: "AI pass likelihood",
-    desc: "A large language model (Llama 3.3-70B via Groq) analyzes each bill's stage, policy area, sponsor history, and cosponsor count to estimate its probability of becoming law with a rationale.",
+    desc: "A large language model (GPT-OSS-120B via Groq) analyzes each bill's stage, policy area, sponsor history, and cosponsor count to estimate its probability of becoming law with a rationale.",
   },
   {
     n: "04", Icon: Scale,
@@ -60,8 +60,8 @@ const TECH_STACK = [
   },
   {
     Icon: Cpu,
-    name: "Groq + Llama 3.3-70B",
-    desc: "Meta's Llama 3.3 (70B) served via Groq's low-latency inference API. Powers summaries, pros/cons, pass likelihood, letters, and call scripts — all in parallel via Promise.allSettled.",
+    name: "Groq + GPT-OSS-120B",
+    desc: "An open-weight 120B-parameter model served via Groq's low-latency inference API. Powers summaries, pros/cons, pass likelihood, letters, and call scripts — all in parallel via Promise.allSettled.",
   },
   {
     Icon: Zap,

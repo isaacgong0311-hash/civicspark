@@ -40,12 +40,14 @@ export const metadata: Metadata = {
       "From ZIP code to constituent letter in under a minute. Plain-English bill summaries, balanced perspectives, and AI-drafted letters — nonpartisan and free.",
     url: "https://civicspark.vercel.app",
     locale: "en_US",
+    images: [{ url: "/cover.jpg", width: 2400, height: 1260, alt: "CivicSpark — Know Your Bills, Reach Your Reps" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "CivicSpark — Know Your Bills, Reach Your Reps",
     description:
       "Plain-English bill summaries, balanced perspectives, and AI-drafted letters to your representatives. Nonpartisan and free.",
+    images: ["/cover.jpg"],
   },
   robots: { index: true, follow: true },
 };

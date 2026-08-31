@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { generateLetter } from "@/lib/ai";
 import type { Bill, Representative } from "@/lib/types";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
+  if (!checkRateLimit(req)) return rateLimitResponse();
   const { bill, rep, position, personalNote } = (await req.json()) as {
     bill: Bill;
     rep: Representative;

@@ -12,6 +12,7 @@ import {
   type ImpactStats,
 } from "@/lib/activity";
 import { STAGE_LABELS, stageName } from "@/lib/stages";
+import { fetchJSON } from "@/lib/fetchJSON";
 
 function StageTimeline({ stage }: { stage?: number }) {
   const current = stage ?? 1;
@@ -67,9 +68,8 @@ export default function MyBillsPage() {
   const [impact, setImpact] = useState<ImpactStats>({ letters: 0, calls: 0, billsExplored: [] });
 
   useEffect(() => {
-    fetch("/api/bills/all")
-      .then(r => r.json())
-      .then(d => setBills(d.bills ?? []))
+    fetchJSON<{ bills: Bill[] }>("/api/bills/all")
+      .then(d => setBills(d?.bills ?? []))
       .finally(() => setLoading(false));
 
     setWatchlist(getWatchlist());

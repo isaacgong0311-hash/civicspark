@@ -203,12 +203,9 @@ const STATE_SENATORS: Record<string, Representative[]> = {
   ],
 };
 
-const FALLBACK: { senators: Representative[]; houseRep: Representative; state: string; district: string } = {
-  state: "TX",
-  district: "21",
-  senators: TX_SENATORS,
-  houseRep: ZIP_DISTRICTS["787"].houseRep,
-};
+// Last-resort state guess, only used if the ZIP3 isn't curated AND the live
+// geocode call fails outright (e.g. network down).
+const FALLBACK: { state: string } = { state: "TX" };
 
 export interface RepLookupResult {
   state: string;
@@ -250,6 +247,26 @@ function isSenator(m: ApiMember): boolean {
   return noDistrict || lastChamber === "Senate";
 }
 
+/* ── Resolve a ZIP code to its real state via a free, keyless geocoder ───── */
+// Only 10 ZIP3 prefixes have curated district data (ZIP_DISTRICTS below); for
+// every other ZIP we still need the *correct* state so we don't show a
+// stranger's senators. zippopotam.us is a stable, free, no-key US ZIP lookup.
+async function geocodeZipToState(zip: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(`https://api.zippopotam.us/us/${zip}`, { signal: controller.signal });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { places?: Array<{ "state abbreviation"?: string }> };
+    return data.places?.[0]?.["state abbreviation"] ?? null;
+  } catch (err) {
+    console.error("geocodeZipToState failed:", err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /* ── Try to fetch live member data from Congress.gov ────────────────────── */
 // The /member endpoint does NOT honor statecode/chamber query params — the
 // correct pattern is the path segment /member/{stateCode}, then partition by
@@ -271,9 +288,9 @@ async function fetchMembersFromCongress(
     const members = data.members ?? [];
 
     const senators = members.filter(isSenator).slice(0, 2);
-    const houseRep = members.find(
-      (m) => !isSenator(m) && String(m.district ?? "") === district,
-    );
+    const houseRep = district
+      ? members.find((m) => !isSenator(m) && String(m.district ?? "") === district)
+      : undefined;
 
     const reps: Representative[] = [];
 
@@ -304,7 +321,8 @@ async function fetchMembersFromCongress(
 
     // Require both senators to consider this a complete live result.
     return senators.length === 2 ? reps : [];
-  } catch {
+  } catch (err) {
+    console.error("fetchMembersFromCongress failed:", err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -312,28 +330,36 @@ async function fetchMembersFromCongress(
 export async function lookupByZip(zip: string): Promise<RepLookupResult> {
   const prefix = zip.trim().slice(0, 3);
   const info = ZIP_DISTRICTS[prefix];
-  const state = info?.state ?? FALLBACK.state;
-  const district = info?.district ?? FALLBACK.district;
+
+  // We only have a precise House district for 10 curated ZIP3 prefixes. For
+  // every other ZIP, geocode to the *real* state rather than defaulting to
+  // Texas — showing a stranger's senators is worse than showing no House rep.
+  const state = info?.state ?? (await geocodeZipToState(zip)) ?? FALLBACK.state;
+  const district = info?.state === state ? info.district : "";
 
   // Try live Congress.gov data (accurate senators + photos)
   const liveReps = await fetchMembersFromCongress(state, district);
   const liveSenators = liveReps.filter((r) => r.chamber === "Senate");
-  const liveHouse = liveReps.find((r) => r.chamber === "House");
+  const liveHouse = district ? liveReps.find((r) => r.chamber === "House") : undefined;
 
   if (liveSenators.length === 2) {
-    // Use the live House rep if matched, otherwise fill from curated data.
-    const houseRep = liveHouse ?? info?.houseRep;
+    // Use the live House rep if matched, otherwise fill from curated data
+    // (only when we trust the district), otherwise omit it entirely.
+    const houseRep = liveHouse ?? (district ? info?.houseRep : undefined);
     const representatives = houseRep ? [houseRep, ...liveSenators] : liveSenators;
     return { state, district, representatives, live: true };
   }
 
-  // Fall back to curated static data
-  const senators = STATE_SENATORS[state] ?? FALLBACK.senators;
-  const houseRep = info?.houseRep ?? FALLBACK.houseRep;
+  // Fall back to curated static data — only trustworthy for states we've
+  // curated senators for. Otherwise return no representatives rather than
+  // silently showing another state's people.
+  const senators = STATE_SENATORS[state];
+  if (!senators) return { state, district, representatives: [], live: false };
+  const houseRep = district ? info?.houseRep : undefined;
   return {
     state,
     district,
-    representatives: [houseRep, ...senators],
+    representatives: houseRep ? [houseRep, ...senators] : senators,
     live: false,
   };
 }
