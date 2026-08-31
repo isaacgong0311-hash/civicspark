@@ -2,9 +2,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Landmark, BookMarked, Menu, X } from "lucide-react";
+import { BookMarked, Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import Seal from "@/components/Seal";
 
 const NAV_LINKS = [
   { href: "/bills", label: "Bills & Legislation" },
@@ -60,19 +61,13 @@ export default function Navbar() {
         }}>
           {/* Logo */}
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", flexShrink: 0 }}>
-            <div style={{
-              width: 30, height: 30, borderRadius: 8,
-              background: "linear-gradient(135deg, #1e4080, #2563c4)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <Landmark size={16} color="white" strokeWidth={1.9} />
-            </div>
+            <Seal size={30} />
             <div>
-              <div style={{ fontFamily: "var(--font-playfair)", fontSize: 17, fontWeight: 700, color: "white", lineHeight: 1.1 }}>
+              <div style={{ fontFamily: "var(--font-playfair)", fontSize: 17, fontWeight: 700, color: "white", lineHeight: 1.1, letterSpacing: "0.01em" }}>
                 CivicSpark
               </div>
               {!isMobile && (
-                <div style={{ fontSize: 8.5, color: "#5b6e8c", letterSpacing: "0.07em",
+                <div style={{ fontSize: 8.5, color: "#5b6e8c", letterSpacing: "0.1em",
                   textTransform: "uppercase", fontFamily: "var(--font-dm-sans)" }}>
                   Congressional App Challenge 2025–26
                 </div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Compass, ArrowRight } from "lucide-react";
+import Seal from "@/components/Seal";
 
 export const metadata = {
   title: "Page not found",
@@ -28,19 +29,10 @@ export default function NotFound() {
           textAlign: "center",
         }}
       >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 14,
-            margin: "0 auto 20px",
-            background: "linear-gradient(135deg, #1e4080, #2563c4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Compass size={26} color="white" strokeWidth={2} />
+        <div style={{ margin: "0 auto 20px", display: "flex", alignItems: "center",
+          justifyContent: "center", gap: 10 }}>
+          <Seal size={40} />
+          <Compass size={22} color="#b8830e" strokeWidth={1.8} />
         </div>
         <div
           style={{

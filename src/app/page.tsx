@@ -8,6 +8,7 @@ import {
   ChevronRight, BookOpen, Globe, Vote,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Seal from "@/components/Seal";
 import type { Bill } from "@/lib/types";
 import { MOCK_BILLS } from "@/lib/congress";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -378,10 +379,10 @@ export default function LandingPage() {
             ].map(({ Icon, label, desc }) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 10,
                 textAlign: "left" }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-                  background: "#eef3fb", display: "flex", alignItems: "center",
+                <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+                  background: "transparent", border: "1.5px solid #1e4080", display: "flex", alignItems: "center",
                   justifyContent: "center" }}>
-                  <Icon size={18} strokeWidth={2} color="#1e4080" />
+                  <Icon size={17} strokeWidth={1.8} color="#1e4080" />
                 </div>
                 <div>
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: "#0d1f3c",
@@ -437,29 +438,54 @@ export default function LandingPage() {
       <section style={{ background: "white", padding: isMobile ? "48px 20px" : "64px 28px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <h2 style={{ fontFamily: "var(--font-playfair)", fontSize: isMobile ? 24 : 28,
-            fontWeight: 700, color: "#0d1f3c", textAlign: "center", marginBottom: 48 }}>
+            fontWeight: 700, color: "#0d1f3c", textAlign: "center", marginBottom: 4 }}>
             Your voice in Congress — made simple
           </h2>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
-            gap: isMobile ? 16 : 32,
-          }}>
-            {[
-              { n: "01", title: "Enter your ZIP", desc: "We identify your House representative and two Senators — the three people who vote on federal laws in your name." },
-              { n: "02", title: "Explore live bills", desc: "Browse legislation from Congress.gov with AI-powered plain-English summaries, balanced perspectives, and pass likelihood scores." },
-              { n: "03", title: "Take action", desc: "Generate a personalized letter or call script for any representative. Copy it, send it, and make your voice heard." },
-            ].map(({ n, title, desc }) => (
-              <div key={n} style={{ padding: "28px 24px", borderRadius: 16, background: "#f4f2ee",
-                border: "1.5px solid #e6e2d8" }}>
-                <div style={{ fontFamily: "var(--font-playfair)", fontSize: 36, fontWeight: 700,
-                  color: "#e6e2d8", marginBottom: 12 }}>{n}</div>
-                <h3 style={{ fontFamily: "var(--font-playfair)", fontSize: 19,
-                  fontWeight: 700, color: "#0d1f3c", marginBottom: 10 }}>{title}</h3>
-                <p style={{ fontSize: 13.5, color: "#7a8699", lineHeight: 1.7,
-                  fontFamily: "var(--font-dm-sans)" }}>{desc}</p>
-              </div>
-            ))}
+          <p style={{ fontSize: 12.5, color: "#b8830e", textAlign: "center", letterSpacing: "0.1em",
+            textTransform: "uppercase", fontFamily: "var(--font-dm-sans)", fontWeight: 700, marginBottom: 48 }}>
+            The path of a bill, made for you
+          </p>
+
+          <div style={{ position: "relative" }}>
+            {!isMobile && (
+              <div aria-hidden="true" style={{
+                position: "absolute", top: 22, left: "16.6%", right: "16.6%", height: 2,
+                background: "repeating-linear-gradient(90deg, #d9c48f 0 7px, transparent 7px 14px)",
+              }} />
+            )}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+              gap: isMobile ? 22 : 32, position: "relative",
+            }}>
+              {[
+                { title: "Enter your ZIP", desc: "We identify your House representative and two Senators — the three people who vote on federal laws in your name." },
+                { title: "Explore live bills", desc: "Browse legislation from Congress.gov with AI-powered plain-English summaries, balanced perspectives, and pass likelihood scores." },
+                { title: "Take action", desc: "Generate a personalized letter or call script for any representative. Copy it, send it, and make your voice heard." },
+              ].map(({ title, desc }, i) => (
+                <div key={title} style={{
+                  display: "flex", flexDirection: isMobile ? "row" : "column",
+                  alignItems: isMobile ? "flex-start" : "center",
+                  textAlign: isMobile ? "left" : "center", gap: isMobile ? 16 : 0,
+                }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+                    background: "#0d1f3c", border: "2px solid #b8830e",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    marginBottom: isMobile ? 0 : 18,
+                  }}>
+                    <span style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic",
+                      fontWeight: 700, fontSize: 18, color: "white" }}>{i + 1}</span>
+                  </div>
+                  <div>
+                    <h3 style={{ fontFamily: "var(--font-playfair)", fontSize: 19,
+                      fontWeight: 700, color: "#0d1f3c", marginBottom: 8 }}>{title}</h3>
+                    <p style={{ fontSize: 13.5, color: "#7a8699", lineHeight: 1.7, maxWidth: isMobile ? undefined : 280,
+                      fontFamily: "var(--font-dm-sans)" }}>{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* CTA */}
@@ -486,10 +512,7 @@ export default function LandingPage() {
           justifyContent: "space-between", gap: 12,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6,
-              background: "linear-gradient(135deg, #1e4080, #2563c4)",
-              display: "flex", alignItems: "center", justifyContent: "center" }}>
-            </div>
+            <Seal size={22} />
             <span style={{ fontFamily: "var(--font-playfair)", fontSize: 14,
               fontWeight: 700, color: "white" }}>CivicSpark</span>
             <span style={{ fontSize: 11, color: "#4b5f7a",

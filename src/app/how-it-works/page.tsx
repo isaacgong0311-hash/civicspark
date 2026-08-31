@@ -111,14 +111,15 @@ export default function HowItWorksPage() {
               transition={{ delay: i * 0.07, duration: 0.45, ease: "easeOut" }}
               style={{ background: "white", borderRadius: 16, padding: "28px 26px",
                 border: "1.5px solid #e6e2d8", boxShadow: "0 2px 8px rgba(13,31,60,0.05)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                  background: "linear-gradient(135deg, #0d1f3c, #1e4080)",
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <div style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
+                  background: "#0d1f3c", border: "2px solid #b8830e",
                   display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Icon size={20} color="white" strokeWidth={1.8} />
+                  <Icon size={18} color="white" strokeWidth={1.8} />
                 </div>
-                <span style={{ fontFamily: "var(--font-playfair)", fontSize: 32, fontWeight: 700,
-                  color: "#e6e2d8" }}>{n}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: "#b8830e",
+                  letterSpacing: "0.12em", textTransform: "uppercase",
+                  fontFamily: "var(--font-dm-sans)" }}>No. {n}</span>
               </div>
               <h3 style={{ fontFamily: "var(--font-playfair)", fontSize: 19, fontWeight: 700,
                 color: "#0d1f3c", marginBottom: 10 }}>{title}</h3>
@@ -168,11 +169,11 @@ export default function HowItWorksPage() {
                   display: "flex", alignItems: "flex-start", gap: 14,
                 }}>
                 <div style={{
-                  width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-                  background: "linear-gradient(135deg, #dce8f8, #b3cff0)",
+                  width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+                  background: "transparent", border: "1.5px solid #1e4080",
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  <Icon size={18} color="#1e4080" strokeWidth={1.8} />
+                  <Icon size={17} color="#1e4080" strokeWidth={1.8} />
                 </div>
                 <div>
                   <h4 style={{ fontFamily: "var(--font-dm-sans)", fontSize: 13.5, fontWeight: 700,
