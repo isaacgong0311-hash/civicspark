@@ -8,7 +8,7 @@ import {
   ChevronRight, BookOpen, Globe, Vote,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import Seal from "@/components/Seal";
+import Footer from "@/components/Footer";
 import type { Bill } from "@/lib/types";
 import { MOCK_BILLS } from "@/lib/congress";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -45,19 +45,40 @@ function MiniStageBar({ stage }: { stage: number }) {
   );
 }
 
-function FeaturedBillCard({ bill }: { bill: Bill }) {
+// Compact "430K+" style formatting for the live bill-count stat.
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M+`;
+  if (n >= 1_000) return `${Math.floor(n / 1_000)}K+`;
+  return `${n}`;
+}
+
+// Shared scroll-reveal treatment for homepage sections below the hero — the
+// hero animates on mount, everything after fades/lifts in as it scrolls into
+// view so the page feels alive rather than a single static screen.
+const REVEAL = {
+  initial: { opacity: 0, y: 22 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-60px" },
+  transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as const },
+};
+function reveal(delay = 0) {
+  return { ...REVEAL, transition: { ...REVEAL.transition, delay } };
+}
+
+function FeaturedBillCard({ bill, index }: { bill: Bill; index: number }) {
   const router = useRouter();
   const isNew = bill.urgency === "new";
   const isUrgent = bill.urgency === "urgent";
 
   return (
     <motion.div
-      whileHover={{ y: -2, boxShadow: "0 8px 30px rgba(13,31,60,0.12)" }}
+      {...reveal(index * 0.08)}
+      whileHover={{ y: -3, boxShadow: "0 8px 30px rgba(13,31,60,0.12)", transition: { duration: 0.18 } }}
       onClick={() => router.push(`/bills`)}
       style={{
         background: "white", borderRadius: 14, padding: "18px 20px",
         border: "1.5px solid #e6e2d8", cursor: "pointer",
-        boxShadow: "0 2px 8px rgba(13,31,60,0.06)", transition: "all 0.18s",
+        boxShadow: "0 2px 8px rgba(13,31,60,0.06)", transition: "box-shadow 0.18s",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
@@ -135,13 +156,17 @@ export default function LandingPage() {
   // genuinely live. MOCK_BILLS act only as a graceful fallback if the API is
   // unreachable, so judges never see a blank section.
   const [featured, setFeatured] = useState<Bill[]>(() => MOCK_BILLS.slice(0, 4));
+  // Live total from Congress.gov's pagination metadata, shown as a hero stat
+  // so the "live data" claim is backed by a real, current number rather than
+  // a hardcoded one.
+  const [totalBills, setTotalBills] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
-    fetchJSON<{ bills?: Bill[] }>("/api/bills/all").then(d => {
-      if (active && d && Array.isArray(d.bills) && d.bills.length >= 4) {
-        setFeatured(d.bills.slice(0, 4));
-      }
+    fetchJSON<{ bills?: Bill[]; total?: number }>("/api/bills/all").then(d => {
+      if (!active || !d) return;
+      if (Array.isArray(d.bills) && d.bills.length >= 4) setFeatured(d.bills.slice(0, 4));
+      if (typeof d.total === "number" && d.total > 0) setTotalBills(d.total);
     });
     return () => { active = false; };
   }, []);
@@ -157,6 +182,13 @@ export default function LandingPage() {
         padding: isMobile ? "48px 20px 56px" : "72px 28px 80px",
         position: "relative", overflow: "hidden",
       }}>
+        {/* Subtle film-grain texture — breaks up the flat gradient for a more
+            tactile, printed-document feel consistent with the civic identity. */}
+        <div aria-hidden="true" style={{
+          position: "absolute", inset: 0, opacity: 0.5, mixBlendMode: "overlay", pointerEvents: "none",
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E\")",
+        }} />
         {/* Ambient orbs */}
         <div style={{
           position: "absolute", top: -100, right: -100, width: 500, height: 500,
@@ -302,7 +334,7 @@ export default function LandingPage() {
             }}>
               {[
                 { n: "3", label: "federal reps" },
-                { n: "50", label: "states" },
+                { n: totalBills != null ? formatCount(totalBills) : "50", label: totalBills != null ? "bills tracked" : "states" },
                 { n: "Free", label: "always" },
               ].map(({ n, label }) => (
                 <div key={label} style={{
@@ -322,7 +354,7 @@ export default function LandingPage() {
 
       {/* ── Trust bar ─────────────────────────────────────────────────────── */}
       <div style={{ background: "#0d1f3c", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5, duration: 0.5 }} style={{
           maxWidth: 1200, margin: "0 auto",
           padding: isMobile ? "12px 20px" : "14px 28px",
           display: "flex", gap: isMobile ? 16 : 32,
@@ -339,13 +371,13 @@ export default function LandingPage() {
               <Icon size={13} strokeWidth={2} color="#b8830e" /> {text}
             </div>
           ))}
-        </div>
+        </motion.div>
       </div>
 
       {/* ── Mission / origin narrative ────────────────────────────────────── */}
       <section style={{ background: "#fbfaf7", padding: isMobile ? "44px 20px" : "64px 28px",
         borderBottom: "1px solid #ece8df" }}>
-        <div style={{ maxWidth: 760, margin: "0 auto", textAlign: "center" }}>
+        <motion.div {...reveal()} style={{ maxWidth: 760, margin: "0 auto", textAlign: "center" }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em",
             textTransform: "uppercase", color: "#b8830e", marginBottom: 16,
             fontFamily: "var(--font-dm-sans)" }}>
@@ -376,9 +408,9 @@ export default function LandingPage() {
               { Icon: BookOpen, label: "Understand", desc: "Plain-English AI summaries" },
               { Icon: Globe, label: "Inclusive", desc: "6 languages + read-aloud" },
               { Icon: Vote, label: "Hold accountable", desc: "See how your reps voted" },
-            ].map(({ Icon, label, desc }) => (
-              <div key={label} style={{ display: "flex", alignItems: "center", gap: 10,
-                textAlign: "left" }}>
+            ].map(({ Icon, label, desc }, i) => (
+              <motion.div key={label} {...reveal(0.12 + i * 0.08)}
+                style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left" }}>
                 <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
                   background: "transparent", border: "1.5px solid #1e4080", display: "flex", alignItems: "center",
                   justifyContent: "center" }}>
@@ -390,16 +422,16 @@ export default function LandingPage() {
                   <div style={{ fontSize: 12, color: "#7a8699",
                     fontFamily: "var(--font-dm-sans)" }}>{desc}</div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
-        </div>
+        </motion.div>
       </section>
 
       {/* ── Featured bills ────────────────────────────────────────────────── */}
       <section style={{ background: "#f4f2ee", padding: isMobile ? "40px 20px 56px" : "60px 28px 80px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{
+          <motion.div {...reveal()} style={{
             display: "flex", alignItems: isMobile ? "flex-start" : "baseline",
             flexDirection: isMobile ? "column" : "row",
             justifyContent: "space-between", gap: 12, marginBottom: 28,
@@ -410,25 +442,25 @@ export default function LandingPage() {
                 Currently before the 119th Congress
               </h2>
               <p style={{ fontSize: 13.5, color: "#7a8699", fontFamily: "var(--font-dm-sans)" }}>
-                Live from Congress.gov — real legislation, real stakes
+                Live from Congress.gov{totalBills != null ? ` — ${totalBills.toLocaleString()} bills and counting` : " — real legislation, real stakes"}
               </p>
             </div>
-            <a href="/bills" style={{
+            <motion.a href="/bills" whileHover={{ x: 3 }} style={{
               fontSize: 13, fontWeight: 700, color: "#1e4080",
               textDecoration: "none", display: "flex", alignItems: "center", gap: 4,
               fontFamily: "var(--font-dm-sans)", flexShrink: 0,
             }}>
               Browse all bills <ChevronRight size={14} strokeWidth={2.5} />
-            </a>
-          </div>
+            </motion.a>
+          </motion.div>
 
           <div style={{
             display: "grid",
             gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))",
             gap: 16,
           }}>
-            {featured.map(bill => (
-              <FeaturedBillCard key={bill.id} bill={bill} />
+            {featured.map((bill, i) => (
+              <FeaturedBillCard key={bill.id} bill={bill} index={i} />
             ))}
           </div>
         </div>
@@ -437,14 +469,14 @@ export default function LandingPage() {
       {/* ── How it works ──────────────────────────────────────────────────── */}
       <section style={{ background: "white", padding: isMobile ? "48px 20px" : "64px 28px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <h2 style={{ fontFamily: "var(--font-playfair)", fontSize: isMobile ? 24 : 28,
+          <motion.h2 {...reveal()} style={{ fontFamily: "var(--font-playfair)", fontSize: isMobile ? 24 : 28,
             fontWeight: 700, color: "#0d1f3c", textAlign: "center", marginBottom: 4 }}>
             Your voice in Congress — made simple
-          </h2>
-          <p style={{ fontSize: 12.5, color: "#b8830e", textAlign: "center", letterSpacing: "0.1em",
+          </motion.h2>
+          <motion.p {...reveal(0.05)} style={{ fontSize: 12.5, color: "#b8830e", textAlign: "center", letterSpacing: "0.1em",
             textTransform: "uppercase", fontFamily: "var(--font-dm-sans)", fontWeight: 700, marginBottom: 48 }}>
             The path of a bill, made for you
-          </p>
+          </motion.p>
 
           <div style={{ position: "relative" }}>
             {!isMobile && (
@@ -463,7 +495,7 @@ export default function LandingPage() {
                 { title: "Explore live bills", desc: "Browse legislation from Congress.gov with AI-powered plain-English summaries, balanced perspectives, and pass likelihood scores." },
                 { title: "Take action", desc: "Generate a personalized letter or call script for any representative. Copy it, send it, and make your voice heard." },
               ].map(({ title, desc }, i) => (
-                <div key={title} style={{
+                <motion.div key={title} {...reveal(i * 0.12)} style={{
                   display: "flex", flexDirection: isMobile ? "row" : "column",
                   alignItems: isMobile ? "flex-start" : "center",
                   textAlign: isMobile ? "left" : "center", gap: isMobile ? 16 : 0,
@@ -483,51 +515,27 @@ export default function LandingPage() {
                     <p style={{ fontSize: 13.5, color: "#7a8699", lineHeight: 1.7, maxWidth: isMobile ? undefined : 280,
                       fontFamily: "var(--font-dm-sans)" }}>{desc}</p>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
 
           {/* CTA */}
-          <div style={{ textAlign: "center", marginTop: 48 }}>
-            <a href="/bills" style={{
+          <motion.div {...reveal(0.15)} style={{ textAlign: "center", marginTop: 48 }}>
+            <motion.a href="/bills" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }} style={{
               display: "inline-flex", alignItems: "center", gap: 8,
               padding: "13px 28px", borderRadius: 10, fontSize: 14, fontWeight: 700,
               textDecoration: "none", background: "#0d1f3c", color: "white",
               fontFamily: "var(--font-dm-sans)",
             }}>
               Browse Bills →
-            </a>
-          </div>
+            </motion.a>
+          </motion.div>
         </div>
       </section>
       </main>
 
-      {/* ── Footer ────────────────────────────────────────────────────────── */}
-      <footer style={{ background: "#060e1f", padding: "24px 20px", marginTop: "auto" }}>
-        <div style={{
-          maxWidth: 1200, margin: "0 auto",
-          display: "flex", alignItems: isMobile ? "flex-start" : "center",
-          flexDirection: isMobile ? "column" : "row",
-          justifyContent: "space-between", gap: 12,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Seal size={22} />
-            <span style={{ fontFamily: "var(--font-playfair)", fontSize: 14,
-              fontWeight: 700, color: "white" }}>CivicSpark</span>
-            <span style={{ fontSize: 11, color: "#4b5f7a",
-              fontFamily: "var(--font-dm-sans)" }}>· Congressional App Challenge 2025–26</span>
-          </div>
-          <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#4b5f7a",
-            fontFamily: "var(--font-dm-sans)", flexWrap: "wrap" }}>
-            <span>AI by Groq (GPT-OSS-120B)</span>
-            <span>·</span>
-            <span>Data: Congress.gov API v3</span>
-            <span>·</span>
-            <span>Built with Next.js 16 &amp; TypeScript</span>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

@@ -267,6 +267,41 @@ async function geocodeZipToState(zip: string): Promise<string | null> {
   }
 }
 
+/* ── Per-member contact info (real website + DC office phone) ───────────────
+   The /member/{state} LIST endpoint's `url` field is a link to that member's
+   own JSON API resource, not a contact page — using it as `contactUrl`
+   directly sent constituents to raw JSON instead of a contact form, and the
+   list endpoint has no phone number at all. Only the single-member DETAIL
+   endpoint (/member/{bioguideId}) carries `officialWebsiteUrl` and
+   `addressInformation.phoneNumber`, so fetch that per member. */
+function deriveContactUrl(officialWebsiteUrl?: string): string | undefined {
+  if (!officialWebsiteUrl) return undefined;
+  return `${officialWebsiteUrl.replace(/\/+$/, "")}/contact`;
+}
+
+async function fetchMemberContactInfo(
+  apiKey: string,
+  bioguideId: string,
+): Promise<{ contactUrl?: string; phone?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/member/${bioguideId}?api_key=${apiKey}&format=json`, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return {};
+    const data = (await res.json()) as {
+      member?: { officialWebsiteUrl?: string; addressInformation?: { phoneNumber?: string } };
+    };
+    return {
+      contactUrl: deriveContactUrl(data.member?.officialWebsiteUrl),
+      phone: data.member?.addressInformation?.phoneNumber,
+    };
+  } catch (err) {
+    console.error("fetchMemberContactInfo failed:", err instanceof Error ? err.message : err);
+    return {};
+  }
+}
+
 /* ── Try to fetch live member data from Congress.gov ────────────────────── */
 // The /member endpoint does NOT honor statecode/chamber query params — the
 // correct pattern is the path segment /member/{stateCode}, then partition by
@@ -301,7 +336,7 @@ async function fetchMembersFromCongress(
         party: partyOf(houseRep.partyName),
         state,
         district,
-        contactUrl: houseRep.url ?? "https://www.house.gov",
+        contactUrl: "https://www.house.gov",
         bioguideId: houseRep.bioguideId,
         photoUrl: houseRep.depiction?.imageUrl,
       });
@@ -313,14 +348,30 @@ async function fetchMembersFromCongress(
         chamber: "Senate",
         party: partyOf(m.partyName),
         state,
-        contactUrl: m.url ?? "https://www.senate.gov",
+        contactUrl: "https://www.senate.gov",
         bioguideId: m.bioguideId,
         photoUrl: m.depiction?.imageUrl,
       });
     }
 
     // Require both senators to consider this a complete live result.
-    return senators.length === 2 ? reps : [];
+    if (senators.length !== 2) return [];
+
+    // Enrich with each member's real contact URL + DC office phone from the
+    // detail endpoint (done in parallel; a failed lookup just keeps the
+    // chamber-homepage fallback set above rather than failing the whole page).
+    const enriched = await Promise.allSettled(
+      reps.map(async (r) => {
+        if (!r.bioguideId) return r;
+        const info = await fetchMemberContactInfo(apiKey, r.bioguideId);
+        return {
+          ...r,
+          contactUrl: info.contactUrl ?? r.contactUrl,
+          phone: info.phone ?? r.phone,
+        };
+      }),
+    );
+    return enriched.map((res, i) => (res.status === "fulfilled" ? res.value : reps[i]));
   } catch (err) {
     console.error("fetchMembersFromCongress failed:", err instanceof Error ? err.message : err);
     return [];

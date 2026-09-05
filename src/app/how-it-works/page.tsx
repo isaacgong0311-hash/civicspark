@@ -6,6 +6,7 @@ import {
   Code2, Database, Cpu, Globe, Layers, Zap,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 import Link from "next/link";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
@@ -206,6 +207,7 @@ export default function HowItWorksPage() {
         </div>
       </div>
       </main>
+      <Footer />
     </div>
   );
 }

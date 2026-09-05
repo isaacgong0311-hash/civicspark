@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronUp, BookOpen, Landmark, Users,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 import type { Representative, Bill, MemberDetail } from "@/lib/types";
 import { fetchJSON, postJSON } from "@/lib/fetchJSON";
 
@@ -470,6 +471,7 @@ export default function RepresentativesPage() {
         <RepresentativesContent />
       </Suspense>
       </main>
+      <Footer />
     </div>
   );
 }

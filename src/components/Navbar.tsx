@@ -99,26 +99,34 @@ export default function Navbar() {
                   const active = path === href || path.startsWith(href + "/");
                   return (
                     <Link key={label} href={href} style={{
-                      padding: "6px 13px", borderRadius: 7, fontSize: 12.5, fontWeight: 600,
+                      position: "relative", padding: "6px 13px", borderRadius: 7, fontSize: 12.5, fontWeight: 600,
                       textDecoration: "none", fontFamily: "var(--font-dm-sans)",
                       color: active ? "white" : "#7a8fa8",
                       background: active ? "rgba(255,255,255,0.07)" : "transparent",
-                      transition: "all 0.15s",
-                      borderBottom: active ? "2px solid #b8830e" : "2px solid transparent",
+                      transition: "color 0.15s, background 0.15s",
                     }}>
                       {label}
+                      {active && (
+                        <motion.div layoutId="nav-underline" transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                          style={{ position: "absolute", left: 13, right: 13, bottom: -1, height: 2,
+                            borderRadius: 1, background: "#b8830e" }} />
+                      )}
                     </Link>
                   );
                 })}
                 <Link href="/my-bills" style={{
-                  padding: "6px 13px", borderRadius: 7, fontSize: 12.5, fontWeight: 600,
+                  position: "relative", padding: "6px 13px", borderRadius: 7, fontSize: 12.5, fontWeight: 600,
                   textDecoration: "none", fontFamily: "var(--font-dm-sans)",
                   color: path === "/my-bills" ? "white" : "#7a8fa8",
                   background: path === "/my-bills" ? "rgba(255,255,255,0.07)" : "transparent",
-                  display: "flex", alignItems: "center", gap: 5, transition: "all 0.15s",
-                  borderBottom: path === "/my-bills" ? "2px solid #b8830e" : "2px solid transparent",
+                  display: "flex", alignItems: "center", gap: 5, transition: "color 0.15s, background 0.15s",
                 }}>
                   <BookMarked size={13} strokeWidth={2} /> My Bills
+                  {path === "/my-bills" && (
+                    <motion.div layoutId="nav-underline" transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                      style={{ position: "absolute", left: 13, right: 13, bottom: -1, height: 2,
+                        borderRadius: 1, background: "#b8830e" }} />
+                  )}
                 </Link>
               </div>
               <Link href="/bills" style={{

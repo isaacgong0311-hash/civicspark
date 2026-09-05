@@ -167,7 +167,9 @@ interface CongressApiBill {
   latestAction?: { actionDate: string; text: string };
   url: string;
   sponsors?: Array<{ bioguideId: string; fullName: string; party: string }>;
-  cosponsors?: number;
+  // The list/search endpoints don't return this at all; the single-bill detail
+  // endpoint (used by getBillsByIds) returns an object, not a bare count.
+  cosponsors?: number | { count?: number };
   introducedDate?: string;
 }
 
@@ -220,6 +222,29 @@ function congressGovBillPath(type: string): string {
   return map[type.toUpperCase()] ?? "house-bill";
 }
 
+/** The list/search endpoints give a clean "Rep. First Last" fullName; the
+    single-bill detail endpoint (used by getBillsByIds) gives the raw
+    "Rep. Last, First [Party-State-District]" form instead — normalize both
+    to the same "Rep./Sen. First Last" shape so sponsor names never render
+    with the bracketed suffix leaking through. */
+function normalizeSponsorName(fullName?: string): string | undefined {
+  const raw = fullName?.trim();
+  if (!raw) return undefined;
+  // "Last" stops at the first comma; "First [Middle]" stops at the next comma
+  // OR the bracket — a trailing ", Jr."/", III" generational suffix (a second
+  // comma before the bracket) is dropped rather than swallowed into "first".
+  const m = /^(Rep\.|Sen\.|Del\.|Resident Commissioner)\s+([^,]+),\s*([^,[]+)(?:,[^[]*)?\s*(?:\[.*\])?$/.exec(raw);
+  if (!m) return raw;
+  const [, title, last, first] = m;
+  return `${title} ${first.trim()} ${last.trim()}`;
+}
+
+function cosponsorCount(c: CongressApiBill["cosponsors"]): number | undefined {
+  if (typeof c === "number") return c;
+  if (c && typeof c === "object" && typeof c.count === "number") return c.count;
+  return undefined;
+}
+
 function apiBillToLocal(b: CongressApiBill): Bill {
   const latestAction = b.latestAction?.text ?? "No recorded action";
   const latestActionDate = b.latestAction?.actionDate ?? "";
@@ -236,29 +261,50 @@ function apiBillToLocal(b: CongressApiBill): Bill {
     matchedIssues: [],
     stage: inferStage(latestAction),
     urgency: inferUrgency(latestActionDate, latestAction),
-    sponsorName: b.sponsors?.[0]?.fullName?.trim() || undefined,
+    sponsorName: normalizeSponsorName(b.sponsors?.[0]?.fullName),
     sponsorParty: b.sponsors?.[0]?.party,
-    cosponsors: typeof b.cosponsors === "number" ? b.cosponsors : undefined,
+    cosponsors: cosponsorCount(b.cosponsors),
     introducedDate: b.introducedDate,
   };
 }
 
-async function fetchFromApi(apiKey: string): Promise<Bill[]> {
-  const url = `${API_BASE}/bill?api_key=${apiKey}&limit=40&sort=updateDate+desc&format=json`;
+async function fetchFromApi(apiKey: string, offset: number, limit: number): Promise<{ bills: Bill[]; total: number }> {
+  const url = `${API_BASE}/bill?api_key=${apiKey}&limit=${limit}&offset=${offset}&sort=updateDate+desc&format=json`;
   const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
   if (!res.ok) throw new Error(`Congress API ${res.status}`);
-  const data = (await res.json()) as { bills: CongressApiBill[] };
-  return data.bills.map(apiBillToLocal);
+  const data = (await res.json()) as { bills: CongressApiBill[]; pagination?: { count?: number } };
+  return { bills: data.bills.map(apiBillToLocal), total: data.pagination?.count ?? data.bills.length };
 }
 
-export async function getRelevantBills(issueIds: string[]): Promise<{ bills: Bill[]; live: boolean }> {
+export async function getRelevantBills(
+  issueIds: string[],
+  opts: { offset?: number; limit?: number } = {},
+): Promise<{ bills: Bill[]; live: boolean; hasMore: boolean; total?: number }> {
   const apiKey = process.env.CONGRESS_API_KEY;
+  const offset = Math.max(0, opts.offset ?? 0);
+  const limit = Math.min(Math.max(1, opts.limit ?? 25), 100);
+
+  // If no issues requested, page straight through the live/mock pool (bills browser mode)
+  if (issueIds.length === 0) {
+    if (apiKey) {
+      try {
+        const { bills, total } = await fetchFromApi(apiKey, offset, limit);
+        return { bills, live: true, hasMore: offset + bills.length < total, total };
+      } catch (err) {
+        console.error("Congress API unreachable, falling back to sample bills:", err instanceof Error ? err.message : err);
+      }
+    }
+    const page = MOCK_BILLS.slice(offset, offset + limit);
+    return { bills: page, live: false, hasMore: offset + limit < MOCK_BILLS.length, total: MOCK_BILLS.length };
+  }
+
+  // Issue-matching mode is unaffected by pagination — it scores a single fetched
+  // pool against the requested topics and returns the best matches.
   let pool: Bill[];
   let live = false;
-
   if (apiKey) {
     try {
-      pool = await fetchFromApi(apiKey);
+      pool = (await fetchFromApi(apiKey, 0, 40)).bills;
       live = true;
     } catch (err) {
       console.error("Congress API unreachable, falling back to sample bills:", err instanceof Error ? err.message : err);
@@ -268,17 +314,54 @@ export async function getRelevantBills(issueIds: string[]): Promise<{ bills: Bil
     pool = MOCK_BILLS;
   }
 
-  // If no issues requested, return the full pool (bills browser mode)
-  if (issueIds.length === 0) {
-    return { bills: pool.slice(0, 20), live };
-  }
-
   const matched = pool
     .map((b) => ({ ...b, matchedIssues: matchIssues(b, issueIds) }))
     .filter((b) => b.matchedIssues.length > 0);
 
   const result = matched.length > 0 ? matched : pool.slice(0, 8);
-  return { bills: result.slice(0, 12), live };
+  return { bills: result.slice(0, 12), live, hasMore: false };
+}
+
+/* ── Resolve specific bills by id, regardless of pagination position ────────
+   Format: `${TYPE}${NUMBER}-${CONGRESS}` e.g. "HR1234-119" (case-insensitive).
+   Used to keep starred/watchlisted bills always resolvable even when they've
+   scrolled out of the paginated "browse" pool. */
+export async function getBillsByIds(ids: string[]): Promise<{ bills: Bill[]; live: boolean; missing: string[] }> {
+  const parsed = ids
+    .map((id) => {
+      const m = /^([A-Za-z]+)(\d+)-(\d+)$/.exec(id.trim());
+      return m ? { id, type: m[1].toUpperCase(), number: m[2], congress: m[3] } : null;
+    })
+    .filter((x): x is { id: string; type: string; number: string; congress: string } => x !== null);
+
+  const apiKey = process.env.CONGRESS_API_KEY;
+
+  if (!apiKey) {
+    const byId = new Map(MOCK_BILLS.map((b) => [b.id.toUpperCase(), b]));
+    const bills = parsed
+      .map((p) => byId.get(`${p.type}${p.number}-${p.congress}`.toUpperCase()))
+      .filter((b): b is Bill => b != null);
+    const foundIds = new Set(bills.map((b) => b.id.toUpperCase()));
+    return { bills, live: false, missing: ids.filter((id) => !foundIds.has(id.trim().toUpperCase())) };
+  }
+
+  const results = await Promise.allSettled(
+    parsed.map(async (p): Promise<Bill | null> => {
+      const url = `${API_BASE}/bill/${p.congress}/${p.type.toLowerCase()}/${p.number}?api_key=${apiKey}&format=json`;
+      const res = await fetch(url, { headers: { Accept: "application/json" }, next: { revalidate: 3600 } });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { bill?: CongressApiBill };
+      return data.bill ? apiBillToLocal(data.bill) : null;
+    }),
+  );
+
+  const bills = results
+    .filter((r): r is PromiseFulfilledResult<Bill | null> => r.status === "fulfilled")
+    .map((r) => r.value)
+    .filter((b): b is Bill => b != null);
+  const foundIds = new Set(bills.map((b) => b.id.toUpperCase()));
+  const missing = ids.filter((id) => !foundIds.has(id.trim().toUpperCase()));
+  return { bills, live: true, missing };
 }
 
 /* ── Full-text search via Congress.gov ───────────────────────────────────── */

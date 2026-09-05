@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Star, BookOpen, Mail, Phone, ArrowRight, TrendingUp, Calendar } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 import type { Bill } from "@/lib/types";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import {
@@ -12,7 +13,7 @@ import {
   type ImpactStats,
 } from "@/lib/activity";
 import { STAGE_LABELS, stageName } from "@/lib/stages";
-import { fetchJSON } from "@/lib/fetchJSON";
+import { postJSON } from "@/lib/fetchJSON";
 
 function StageTimeline({ stage }: { stage?: number }) {
   const current = stage ?? 1;
@@ -68,12 +69,21 @@ export default function MyBillsPage() {
   const [impact, setImpact] = useState<ImpactStats>({ letters: 0, calls: 0, billsExplored: [] });
 
   useEffect(() => {
-    fetchJSON<{ bills: Bill[] }>("/api/bills/all")
+    // Resolve tracked bills directly by id rather than filtering a paginated
+    // "recent bills" pool — otherwise a bill starred from search (or simply
+    // pushed off the recent page by newer bills) would silently vanish here.
+    const ids = [...getWatchlist()];
+    setWatchlist(new Set(ids));
+    setImpact(getImpact());
+
+    if (ids.length === 0) {
+      setBills([]);
+      setLoading(false);
+      return;
+    }
+    postJSON<{ bills: Bill[] }>("/api/bills/by-ids", { ids })
       .then(d => setBills(d?.bills ?? []))
       .finally(() => setLoading(false));
-
-    setWatchlist(getWatchlist());
-    setImpact(getImpact());
   }, []);
 
   const trackedBills = useMemo(() => bills.filter(b => watchlist.has(b.id)), [bills, watchlist]);
@@ -220,6 +230,7 @@ export default function MyBillsPage() {
           )}
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

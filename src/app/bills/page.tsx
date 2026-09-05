@@ -10,6 +10,7 @@ import {
   TrendingUp, Bell,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 import type { Bill, BillSummary, BillVote, PassLikelihood, ProsCons, Representative, VoteCast } from "@/lib/types";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import {
@@ -107,10 +108,14 @@ function BillCard({
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      onClick={() => onAction(bill)}
+      role="button" tabIndex={0}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAction(bill); } }}
+      aria-label={`Open ${bill.type} ${bill.number} — ${bill.title}`}
       style={{
         background: "white", borderRadius: 12, padding: "18px 20px",
         border: `1.5px solid ${starred ? "#e8c96a" : "#e6e2d8"}`,
-        marginBottom: 10,
+        marginBottom: 10, cursor: "pointer",
         boxShadow: starred
           ? "0 2px 8px rgba(184,131,14,0.10)"
           : "0 1px 4px rgba(13,31,60,0.04)",
@@ -225,7 +230,8 @@ function BillCard({
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <span style={{
             fontSize: 10.5, fontWeight: 700, color: "#1e4080", letterSpacing: "0.03em",
-            padding: "2px 8px", borderRadius: 5, background: "#eef3fb",
+            padding: "2px 8px 2px 7px", borderRadius: 5, background: "#eef3fb",
+            borderLeft: `3px solid ${isUrgent ? "#ef4444" : isNew ? "#22c55e" : "#1e4080"}`,
             fontFamily: "var(--font-dm-sans)", whiteSpace: "nowrap", flexShrink: 0,
           }}>
             {stageName(bill.stage ?? 1)}
@@ -238,7 +244,7 @@ function BillCard({
           )}
         </div>
         <motion.button
-          onClick={() => onAction(bill)}
+          onClick={e => { e.stopPropagation(); onAction(bill); }}
           style={{
             display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700,
             padding: "6px 15px", borderRadius: 7, cursor: "pointer", flexShrink: 0,
@@ -1337,10 +1343,19 @@ const POLICY_ICONS: Record<string, string> = {
 
 type SortOption = "recent" | "stage-asc" | "stage-desc" | "cosponsors";
 
+// Page size for "browse all bills" pagination, and a soft cap on how many
+// bills we'll keep appended in memory before pointing the user at search
+// instead (keeps the filter/sort passes and DOM bounded).
+const PAGE_SIZE = 25;
+const MAX_LOADED = 500;
+
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([]);
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState<number | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Bill[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -1354,6 +1369,12 @@ export default function BillsPage() {
   const [showWatchlist, setShowWatchlist] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [impact, setImpact] = useState<ImpactStats>({ letters: 0, calls: 0, billsExplored: [] });
+  // Watchlisted bills that fell outside the paginated "browse" pool (starred
+  // via search, or since pushed off the loaded pages) — resolved directly by
+  // id so the Watchlist view never silently drops them.
+  const [watchlistExtras, setWatchlistExtras] = useState<Bill[]>([]);
+  const [resolvingWatchlist, setResolvingWatchlist] = useState(false);
+  const [missingWatchlistIds, setMissingWatchlistIds] = useState<Set<string>>(new Set());
   // Bumped whenever a bill is marked "seen" so the updated-bills memo (which
   // reads seen-stage snapshots from localStorage) recomputes.
   const [seenVersion, setSeenVersion] = useState(0);
@@ -1361,8 +1382,16 @@ export default function BillsPage() {
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    fetchJSON<{ bills: Bill[]; live: boolean }>("/api/bills/all")
-      .then(d => { if (d) { setBills(d.bills); setLive(d.live); } })
+    fetchJSON<{ bills: Bill[]; live: boolean; hasMore?: boolean; total?: number }>(
+      `/api/bills/all?offset=0&limit=${PAGE_SIZE}`,
+    )
+      .then(d => {
+        if (!d) return;
+        setBills(d.bills);
+        setLive(d.live);
+        setHasMore(!!d.hasMore);
+        setTotal(d.total);
+      })
       .finally(() => setLoading(false));
 
     // Load reps from sessionStorage
@@ -1380,6 +1409,30 @@ export default function BillsPage() {
     // Load this browser's own civic-impact history (letters/calls/bills explored)
     setImpact(getImpact());
   }, []);
+
+  // Load the next page of "browse all" results and append them — filters/sort
+  // (which run over the full `bills` array below) apply cumulatively as more
+  // pages load, with no special-casing needed.
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const d = await fetchJSON<{ bills: Bill[]; live: boolean; hasMore?: boolean; total?: number }>(
+      `/api/bills/all?offset=${bills.length}&limit=${PAGE_SIZE}`,
+    );
+    if (d) {
+      // Congress.gov's "recently updated" feed is live and keeps shifting
+      // between requests, so offset-based pages can briefly overlap — dedupe
+      // by id so a re-surfaced bill doesn't render (and key) twice.
+      setBills(prev => {
+        const existing = new Set(prev.map(b => b.id));
+        return [...prev, ...d.bills.filter(b => !existing.has(b.id))];
+      });
+      setHasMore(!!d.hasMore);
+      setTotal(d.total);
+      if (d.live) setLive(true);
+    }
+    setLoadingMore(false);
+  }, [bills.length, hasMore, loadingMore]);
 
   // Debounced server-side search
   useEffect(() => {
@@ -1423,19 +1476,61 @@ export default function BillsPage() {
   }, []);
 
   // Deep-link support: /bills?open=<billId> opens that bill's drawer directly,
-  // used by the My Bills dashboard's "Take Action" links.
+  // used by the My Bills dashboard's "Take Action" links. The target may not
+  // be in the currently-loaded paginated pool, so fall back to resolving it
+  // directly by id rather than silently doing nothing.
   const openedFromLinkRef = useRef(false);
   useEffect(() => {
     if (openedFromLinkRef.current || bills.length === 0) return;
     const openId = new URLSearchParams(window.location.search).get("open");
     if (!openId) return;
     const target = bills.find(b => b.id === openId);
+    openedFromLinkRef.current = true;
     if (target) {
-      openedFromLinkRef.current = true;
       openBill(target);
       window.history.replaceState(null, "", "/bills");
+      return;
     }
+    postJSON<{ bills: Bill[] }>("/api/bills/by-ids", { ids: [openId] }).then(d => {
+      if (d?.bills?.[0]) openBill(d.bills[0]);
+      window.history.replaceState(null, "", "/bills");
+    });
   }, [bills, openBill]);
+
+  // Resolve any watchlisted bills that fell outside the loaded pool whenever
+  // the Watchlist view is opened — closes the "starred bill vanishes" gap.
+  useEffect(() => {
+    if (!showWatchlist) return;
+    const loadedIds = new Set([...bills.map(b => b.id), ...watchlistExtras.map(b => b.id)]);
+    const need = [...watchlist].filter(id => !loadedIds.has(id) && !missingWatchlistIds.has(id));
+    if (need.length === 0) return;
+    let cancelled = false;
+    setResolvingWatchlist(true);
+    postJSON<{ bills: Bill[]; missing?: string[] }>("/api/bills/by-ids", { ids: need })
+      .then(d => {
+        if (cancelled || !d) return;
+        if (d.bills.length > 0) setWatchlistExtras(prev => [...prev, ...d.bills]);
+        if (d.missing && d.missing.length > 0) {
+          setMissingWatchlistIds(prev => new Set([...prev, ...d.missing!]));
+        }
+      })
+      .finally(() => { if (!cancelled) setResolvingWatchlist(false); });
+    return () => { cancelled = true; };
+  }, [showWatchlist, watchlist, bills, watchlistExtras, missingWatchlistIds]);
+
+  // Unstar the watchlist entries that couldn't be resolved (renumbered/removed
+  // bills) so the note in the UI doesn't linger forever.
+  const clearMissingWatchlistIds = useCallback(() => {
+    setWatchlist(prev => {
+      let next = new Set(prev);
+      // toggleWatchlistId removes-and-persists when the id is already present —
+      // chaining it over the real current set (not just the missing ids) keeps
+      // localStorage correct instead of clobbering it with a partial set.
+      missingWatchlistIds.forEach(id => { if (next.has(id)) next = toggleWatchlistId(id, next); });
+      return next;
+    });
+    setMissingWatchlistIds(new Set());
+  }, [missingWatchlistIds]);
 
   // Compute policy area counts from the base pool
   const policyAreas = useMemo(() => {
@@ -1446,12 +1541,22 @@ export default function BillsPage() {
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
   }, [bills]);
 
-  // Determine base pool: server search results, watchlist, or full bill list
+  // Determine base pool: server search results, watchlist, or full bill list.
+  // Watchlist mode merges in `watchlistExtras` (bills resolved directly by id
+  // because they fell outside the paginated pool) so a starred bill is always
+  // shown here regardless of pagination position.
   const basePool = useMemo(() => {
-    if (showWatchlist) return bills.filter(b => watchlist.has(b.id));
+    if (showWatchlist) {
+      const seen = new Set<string>();
+      return [...bills, ...watchlistExtras].filter(b => {
+        if (!watchlist.has(b.id) || seen.has(b.id)) return false;
+        seen.add(b.id);
+        return true;
+      });
+    }
     if (searchResults !== null) return searchResults;
     return bills;
-  }, [bills, showWatchlist, searchResults, watchlist]);
+  }, [bills, showWatchlist, searchResults, watchlist, watchlistExtras]);
 
   // Filter + sort
   const filtered = useMemo(() => {
@@ -1774,20 +1879,44 @@ export default function BillsPage() {
             </div>
           </div>
 
+          {/* Watchlist resolution status — surfaces bills starred outside the loaded pool */}
+          {showWatchlist && resolvingWatchlist && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
+              borderRadius: 10, background: "white", border: "1.5px solid #e6e2d8", marginBottom: 10,
+              fontSize: 12.5, color: "#7a8699", fontFamily: "var(--font-dm-sans)" }}>
+              <Loader2 size={13} strokeWidth={2.5} className="animate-spin" /> Resolving saved bills…
+            </div>
+          )}
+          {showWatchlist && missingWatchlistIds.size > 0 && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              padding: "10px 14px", borderRadius: 10, background: "#fdf6e3", border: "1.5px solid #e8c96a",
+              marginBottom: 10, fontSize: 12.5, color: "#6b4f0a", fontFamily: "var(--font-dm-sans)" }}>
+              <span>
+                {missingWatchlistIds.size} saved bill{missingWatchlistIds.size !== 1 ? "s" : ""} couldn&apos;t be
+                found — {missingWatchlistIds.size !== 1 ? "they" : "it"} may have been renumbered or removed.
+              </span>
+              <button onClick={clearMissingWatchlistIds}
+                style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700,
+                  color: "#8a5f00", flexShrink: 0, fontFamily: "var(--font-dm-sans)", fontSize: 12.5 }}>
+                Remove
+              </button>
+            </div>
+          )}
+
           {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {[1,2,3,4,5].map(i => (
                 <div key={i} className="skeleton" style={{ height: 160, borderRadius: 12 }} />
               ))}
             </div>
-          ) : showWatchlist && filtered.length === 0 ? (
+          ) : showWatchlist && filtered.length === 0 && !resolvingWatchlist ? (
             <div style={{ textAlign: "center", padding: "48px 20px", color: "#7a8699",
               fontFamily: "var(--font-dm-sans)" }}>
               <Star size={36} strokeWidth={1.5} color="#d1d9e6" style={{ margin: "0 auto 16px" }} />
               <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Your watchlist is empty</p>
               <p style={{ fontSize: 13 }}>Click the ★ on any bill to save it here for quick access.</p>
             </div>
-          ) : filtered.length === 0 ? (
+          ) : filtered.length === 0 && !showWatchlist ? (
             <div style={{ textAlign: "center", padding: "48px 20px", color: "#7a8699",
               fontFamily: "var(--font-dm-sans)" }}>
               <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>No bills match your filters</p>
@@ -1805,14 +1934,49 @@ export default function BillsPage() {
               />
             ))
           )}
+
+          {/* Load more — plain "browse all" mode only; search/watchlist pools are already complete */}
+          {!loading && !showWatchlist && searchResults === null && (
+            hasMore && bills.length < MAX_LOADED ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginTop: 8 }}>
+                <motion.button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 7, padding: "10px 26px", borderRadius: 999,
+                    fontSize: 13, fontWeight: 700, cursor: loadingMore ? "default" : "pointer",
+                    border: "1.5px solid #e8c96a", background: loadingMore ? "#fdf6e3" : "white",
+                    color: "#8a5f00", fontFamily: "var(--font-dm-sans)",
+                  }}
+                  whileHover={!loadingMore ? { background: "#fdf6e3" } : {}} whileTap={{ scale: 0.97 }}
+                >
+                  {loadingMore
+                    ? <><Loader2 size={14} strokeWidth={2.5} className="animate-spin" /> Loading…</>
+                    : <>Load {PAGE_SIZE} more bills</>}
+                </motion.button>
+                {typeof total === "number" && total > 0 && (
+                  <span style={{ fontSize: 11.5, color: "#9ba8ba", fontFamily: "var(--font-dm-sans)" }}>
+                    Showing {bills.length.toLocaleString()} of {total.toLocaleString()} bills
+                  </span>
+                )}
+              </div>
+            ) : bills.length >= MAX_LOADED ? (
+              <p style={{ textAlign: "center", fontSize: 12, color: "#9ba8ba", marginTop: 14,
+                fontFamily: "var(--font-dm-sans)" }}>
+                Showing our most recent {bills.length.toLocaleString()} bills — use search above to find something older.
+              </p>
+            ) : null
+          )}
         </div>
       </div>
       </main>
+      <Footer />
 
       {/* Action drawer */}
       <AnimatePresence>
         {activeBill && (
           <ActionDrawer
+            key={activeBill.id}
             bill={activeBill}
             reps={reps}
             onClose={() => { setActiveBill(null); setImpact(getImpact()); }}
