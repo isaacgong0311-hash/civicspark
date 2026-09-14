@@ -20,14 +20,14 @@ const barlow = Barlow({
 export const metadata: Metadata = {
   metadataBase: new URL("https://civicspark.vercel.app"),
   title: {
-    default: "CivicSpark — Know Your Bills, Reach Your Reps",
+    default: "CivicSpark Missions — Learn the Bill. Shape the Conversation.",
     template: "%s · CivicSpark",
   },
   description:
-    "Understand federal legislation in plain English, see balanced perspectives, and send AI-drafted letters to your representatives. Nonpartisan, account-free, powered by live Congress.gov data.",
+    "Source-backed classroom missions that help students understand real legislation, weigh evidence, and write a teacher-reviewed letter to Congress.",
   applicationName: "CivicSpark",
   keywords: [
-    "civic engagement", "Congress", "legislation", "bills", "representatives",
+    "civic education", "classroom", "Congress", "legislation", "student voice",
     "constituent letter", "nonpartisan", "Congressional App Challenge", "Congress.gov",
   ],
   authors: [{ name: "CivicSpark" }],
@@ -35,18 +35,18 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "CivicSpark",
-    title: "CivicSpark — Know Your Bills, Reach Your Reps",
+    title: "CivicSpark Missions — Learn the Bill. Shape the Conversation.",
     description:
-      "From ZIP code to constituent letter in under a minute. Plain-English bill summaries, balanced perspectives, and AI-drafted letters — nonpartisan and free.",
+      "Students investigate a real bill, weigh official evidence, and turn their perspective into a teacher-reviewed letter to Congress.",
     url: "https://civicspark.vercel.app",
     locale: "en_US",
-    images: [{ url: "/cover.jpg", width: 2400, height: 1260, alt: "CivicSpark — Know Your Bills, Reach Your Reps" }],
+    images: [{ url: "/cover.jpg", width: 2400, height: 1260, alt: "CivicSpark classroom missions" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "CivicSpark — Know Your Bills, Reach Your Reps",
+    title: "CivicSpark Missions",
     description:
-      "Plain-English bill summaries, balanced perspectives, and AI-drafted letters to your representatives. Nonpartisan and free.",
+      "Source-backed civic missions that move students from understanding to action.",
     images: ["/cover.jpg"],
   },
   robots: { index: true, follow: true },

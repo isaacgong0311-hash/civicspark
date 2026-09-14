@@ -1,79 +1,53 @@
-# CivicSpark — Demo Video Script
+# CivicSpark Missions — Three-Minute Demo
 
-**Target length:** ~2:30–2:45 (CAC allows up to 3 min — shorter and tighter scores better)
-**Format:** Screen recording of `civicspark.vercel.app` with voiceover. Record at 1280×720 or 1080p.
-**Tone:** Confident, conversational. Talk like you're showing a friend, not reading a paper.
+Record one continuous student-to-teacher transformation. Use join code **SPARK6** and preflight the production build immediately before recording.
 
-> Each scene = what's ON SCREEN + what you SAY. Times are cumulative targets.
+## 0:00–0:20 — The problem and promise
 
----
-
-### Scene 1 — Hook + the problem  (0:00–0:20)
-**On screen:** Start on the CivicSpark landing page (the hero). Slowly scroll past the civic-stats bar.
+**On screen:** Homepage hero, then the sample mission.
 
 **Say:**
-> "Only about one in four Americans has ever contacted their representative in Congress. It's not that people don't care — it's that following legislation is confusing, the bills are written in dense legal language, and most people don't even know who represents them. I built CivicSpark to fix that. It takes you from your ZIP code to a finished letter to Congress in under a minute."
 
----
+> Students learn how Congress works, but rarely get to practice participating. CivicSpark turns one real bill into a guided journey: understand official evidence, decide what you think, and write something your representative can actually read.
 
-### Scene 2 — Find your representatives  (0:20–0:40)
-**On screen:** Go to the Representatives page. Type in a ZIP code. Show the rep cards loading with real photos, party, and contact info.
+## 0:20–1:35 — One student mission
 
-**Say:**
-> "It starts with your ZIP code. CivicSpark queries the official Congress.gov API and pulls back your House representative and both of your senators — with live photos, party, and contact information. I can even expand a lawmaker to see the actual bills they've recently sponsored."
-
-*(Click to expand one rep's recent legislation.)*
-
----
-
-### Scene 3 — Explore real bills  (0:40–1:05)
-**On screen:** Go to the Bills page. Show the list of live bills. Use a filter or the search bar to search a topic (e.g., "housing" or "veterans"). Click into one bill to open the detail drawer.
+**On screen:** Enter SPARK6 and a nickname. Move through the scenario, set an initial position and confidence, open evidence cards and their source links, weigh both perspectives, answer the knowledge check, and draft the letter.
 
 **Say:**
-> "Here are real bills moving through the current Congress, pulled live and sorted by latest activity. I can search the full text of legislation, filter by policy area, and star bills to a watchlist. Let's open one up."
 
----
+> A student joins with a code and nickname—no account or personal address. First, CivicSpark records an initial view. Then the student investigates the Kids Off Social Media Act through evidence tied directly to Congress.gov. Facts are separated from supporting and opposing arguments, and every claim shows its source. The knowledge check explains each answer instead of just marking it wrong. Finally, the student reflects in their own words. CivicSpark organizes those answers into a letter, but it cannot invent an experience or introduce an uncited fact.
 
-### Scene 4 — The AI features (the core)  (1:05–1:35)
-**On screen:** In the bill drawer, show the AI sections rendering: plain-English summary, the pass-likelihood meter with its rationale, and the balanced pros and cons.
+## 1:35–2:10 — Teacher outcomes
 
-**Say:**
-> "This is where it gets powerful. An AI model reads the bill and explains it in plain English — what it does and how it could actually affect you. It estimates how likely the bill is to become law, with a reason. And it lays out three arguments for and three against — completely balanced, so it informs you instead of telling you what to think."
-
----
-
-### Scene 5 — Take action  (1:35–1:55)
-**On screen:** Switch to the "Take Action" tab. Pick a position (Support / Oppose), type a short personal note, and click to generate. Show the AI-written constituent letter appear. Briefly show the call-script tab too. Hit copy.
+**On screen:** Open Teacher Studio. Show the anonymous metrics, review queue, feedback controls, approve a letter, and open the PDF export.
 
 **Say:**
-> "Once you've made up your own mind, CivicSpark writes the letter for you. I pick a position, add a personal note, and it drafts a real constituent letter addressed to my specific representative — or a phone-call script if I'd rather call. One click to copy, and I'm ready to send."
 
----
+> The teacher sees learning, not ideology: completion, source-based knowledge, and confidence change. Submissions can be approved, returned with feedback, or excluded. Approved letters become a polished classroom packet addressed to the appropriate representative. Nothing is sent automatically.
 
-### Scene 6 — Follow through: My Bills & accountability  (1:55–2:25)
-**On screen:** Go to the My Bills page. Show the dashboard: watchlisted bills and the civic-impact tracker (letters sent, calls made). Expand a bill card's roll-call vote panel to show how your specific rep voted. Tap the "listen" icon on a summary to show read-aloud starting. If visible, switch a bill summary to another language.
+## 2:10–2:40 — Technical depth
 
-**Say:**
-> "CivicSpark also remembers you. My Bills tracks every bill I've watched or acted on, and turns that into a personal civic-impact record — letters sent, calls made — all stored right in my browser, no account needed. I can see exactly how my representative voted on a bill to hold them accountable, and if reading isn't the easiest way for me to take this in, I can have any summary read aloud, or translated into another language."
-
----
-
-### Scene 7 — Close + tech  (2:25–2:45)
-**On screen:** Zoom back out to the landing page or the How It Works page showing the tech stack.
+**On screen:** Brief diagram or code close-ups of ingestion, schema validation, citation rejection, frozen sources, and RLS.
 
 **Say:**
-> "CivicSpark is built with Next.js, TypeScript, and React, on live data from the Congress.gov API, with AI running on Groq. It's nonpartisan by design, works on your phone, and needs no account. My goal was simple: make it so anyone — a student, a first-time voter, anyone — can feel like participating in democracy is actually within reach. Thanks for watching."
 
----
+> Behind the interface, CivicSpark captures official bill metadata, actions, summaries, and source references. AI generation is structured and citation-validated; a claim with an unknown source ID is rejected. Content is generated once, reviewed, and frozen so a class is not dependent on a live AI call. Supabase row-level security isolates teachers, while student sessions use hashed mission-scoped tokens. The schema never stores student emails, ZIP codes, addresses, or school names.
 
-## Recording tips
-- **Do a dry run first** so the AI sections are warm/cached — you don't want to narrate over a long spinner. If a generation is slow, you can lightly trim/cut in editing.
-- **Pre-pick your examples:** decide the ZIP code and the exact bill you'll open before you hit record, so the demo is smooth. For Scene 6, watchlist/act on a bill or two beforehand so My Bills isn't empty.
-- **Keep the cursor calm** — move deliberately, don't jitter. Pause ~1 second after each click so viewers can see the result.
-- **Show, don't just tell:** every claim in the voiceover should have something happening on screen at that moment.
-- **Audio matters more than video.** Record the voiceover in a quiet room; clean narration beats a fancy screen capture.
-- **End under 3:00.** If you run long, cut Scene 2 or 3 down, or trim Scene 6 to just the impact tracker — never cut the AI demo (Scene 4) or the action step (Scene 5); those are the heart of the app.
-- **Verify before final cut:** make sure no API errors or blank states appear on screen. If the live API hiccups, re-record that segment.
+## 2:40–3:00 — Verified pilot close
 
-## Optional 60-second version (if a shorter cut is needed)
-Hook (problem) → ZIP lookup → open a bill, show the plain-English summary + pros/cons → generate the letter → one closing line with the tech. Drop search, watchlist, My Bills, and pass-likelihood to save time.
+**On screen:** Pilot result cards and one permissioned anonymous quote.
+
+**Say after the pilot:**
+
+> In our pilot, [participants] students completed a mission, with [completion rate] percent finishing and an average knowledge change of [knowledge change] points. The teacher approved [approved letters] letters. One student told us, “[short verified quote].” CivicSpark does not tell students what to think. It gives them the evidence and a real reason to think carefully.
+
+## Recording checklist
+
+- Replace every bracket only with verified pilot data.
+- Keep official-source labels legible in the recording.
+- Show at least one wrong quiz answer and its explanation.
+- Use a real teacher-reviewed letter, with identifying details removed.
+- Test at mobile width and desktop before recording.
+- Do not claim letters were delivered; demonstrate the reviewed PDF packet.
+- Finish under 3:00 and include an AI-use disclosure in the submission.

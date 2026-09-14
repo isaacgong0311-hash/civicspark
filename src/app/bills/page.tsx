@@ -461,7 +461,7 @@ function ListenButton({ text, label = "Listen", lang = "en-US" }: { text: string
 
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      setSupported(false);
+      queueMicrotask(() => setSupported(false));
     }
     // Stop any speech if this component unmounts (e.g. drawer closes / bill changes).
     return () => {
@@ -558,7 +558,13 @@ function ActionDrawer({
   const drawerRef = useRef<HTMLElement | null>(null);
 
   // Reset the conversation and language when switching bills.
-  useEffect(() => { setAskMsgs([]); setAskInput(""); setLanguage("en"); }, [bill.id]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      setAskMsgs([]);
+      setAskInput("");
+      setLanguage("en");
+    });
+  }, [bill]);
 
   // Keyboard: close the drawer on Escape, and trap Tab focus inside the
   // drawer so keyboard/screen-reader users can't tab out to the page behind it.
@@ -626,27 +632,31 @@ function ActionDrawer({
   useEffect(() => {
     postJSON<PassLikelihood>("/api/likelihood", bill).then(d => { if (d) setLikelihood(d); });
     postJSON<ProsCons>("/api/proscons", bill).then(d => { if (d) setProsCons(d); });
-  }, [bill.id]);
+  }, [bill]);
 
   // The plain-English summary is re-fetched whenever the reader picks a new
   // language, so the explanation is translated on demand.
   useEffect(() => {
-    setLoadingSummary(true);
-    setSummary(null);
+    queueMicrotask(() => {
+      setLoadingSummary(true);
+      setSummary(null);
+    });
     postJSON<BillSummary>("/api/summarize", { bill, language })
       .then(d => setSummary(d))
       .finally(() => setLoadingSummary(false));
-  }, [bill.id, language]);
+  }, [bill, language]);
 
   // Fetch how the user's reps actually voted on this bill (accountability loop).
   useEffect(() => {
-    setLoadingVote(true);
-    setBillVote(null);
+    queueMicrotask(() => {
+      setLoadingVote(true);
+      setBillVote(null);
+    });
     const bioguideIds = reps.map(r => r.bioguideId).filter(Boolean) as string[];
     postJSON<{ vote?: BillVote | null }>("/api/bill-vote", { bill, bioguideIds })
       .then(d => setBillVote(d?.vote ?? null))
       .finally(() => setLoadingVote(false));
-  }, [bill.id, reps]);
+  }, [bill, reps]);
 
   async function handleLetter() {
     if (!actionRep) return;
@@ -1394,20 +1404,22 @@ export default function BillsPage() {
       })
       .finally(() => setLoading(false));
 
-    // Load reps from sessionStorage
-    try {
-      const saved = sessionStorage.getItem("civicspark_reps");
-      if (saved) {
-        const d = JSON.parse(saved);
-        setReps(d.representatives ?? []);
-      }
-    } catch { /* ignore */ }
+    queueMicrotask(() => {
+      // Load reps from sessionStorage
+      try {
+        const saved = sessionStorage.getItem("civicspark_reps");
+        if (saved) {
+          const d = JSON.parse(saved);
+          setReps(d.representatives ?? []);
+        }
+      } catch { /* ignore */ }
 
-    // Load watchlist from localStorage
-    setWatchlist(getWatchlist());
+      // Load watchlist from localStorage
+      setWatchlist(getWatchlist());
 
-    // Load this browser's own civic-impact history (letters/calls/bills explored)
-    setImpact(getImpact());
+      // Load this browser's own civic-impact history (letters/calls/bills explored)
+      setImpact(getImpact());
+    });
   }, []);
 
   // Load the next page of "browse all" results and append them — filters/sort
@@ -1439,7 +1451,7 @@ export default function BillsPage() {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
 
     if (search.length >= 3) {
-      setSearching(true);
+      queueMicrotask(() => setSearching(true));
       searchTimerRef.current = setTimeout(async () => {
         const d = await fetchJSON<{ bills: Bill[]; live: boolean }>(
           `/api/bills/search?q=${encodeURIComponent(search)}&limit=30`,
@@ -1449,8 +1461,10 @@ export default function BillsPage() {
         setSearching(false);
       }, 500);
     } else {
-      setSearchResults(null);
-      setSearching(false);
+      queueMicrotask(() => {
+        setSearchResults(null);
+        setSearching(false);
+      });
     }
 
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
@@ -1462,7 +1476,10 @@ export default function BillsPage() {
 
   // Watched bills that have advanced stage since the user last opened them.
   const updatedBills = useMemo(
-    () => getWatchlistUpdates(bills, watchlist),
+    () => {
+      void seenVersion;
+      return getWatchlistUpdates(bills, watchlist);
+    },
     [bills, watchlist, seenVersion],
   );
 
@@ -1487,8 +1504,10 @@ export default function BillsPage() {
     const target = bills.find(b => b.id === openId);
     openedFromLinkRef.current = true;
     if (target) {
-      openBill(target);
-      window.history.replaceState(null, "", "/bills");
+      queueMicrotask(() => {
+        openBill(target);
+        window.history.replaceState(null, "", "/bills");
+      });
       return;
     }
     postJSON<{ bills: Bill[] }>("/api/bills/by-ids", { ids: [openId] }).then(d => {
@@ -1505,7 +1524,7 @@ export default function BillsPage() {
     const need = [...watchlist].filter(id => !loadedIds.has(id) && !missingWatchlistIds.has(id));
     if (need.length === 0) return;
     let cancelled = false;
-    setResolvingWatchlist(true);
+    queueMicrotask(() => setResolvingWatchlist(true));
     postJSON<{ bills: Bill[]; missing?: string[] }>("/api/bills/by-ids", { ids: need })
       .then(d => {
         if (cancelled || !d) return;
@@ -1581,10 +1600,20 @@ export default function BillsPage() {
   }, [basePool, search, searchResults, showWatchlist, chamber, stages, policies, sort]);
 
   function toggleStage(s: number) {
-    setStages(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
+    setStages(prev => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
   }
   function togglePolicy(p: string) {
-    setPolicies(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
+    setPolicies(prev => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p);
+      else next.add(p);
+      return next;
+    });
   }
 
   return (

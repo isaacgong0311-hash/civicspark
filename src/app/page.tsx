@@ -1,541 +1,67 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import {
-  MapPin, ArrowRight, Shield, Zap, Database,
-  ChevronRight, BookOpen, Globe, Vote,
-} from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { ArrowRight, BookOpen, CheckCircle2, ExternalLink, GraduationCap, ShieldCheck, Sparkles, Users } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import type { Bill } from "@/lib/types";
-import { MOCK_BILLS } from "@/lib/congress";
-import { useIsMobile } from "@/hooks/useIsMobile";
-import { fetchJSON, postJSON } from "@/lib/fetchJSON";
-
-const STAGE_LABELS = ["Intro", "Cmte", "Floor", "Passed", "Law"];
-
-function MiniStageBar({ stage }: { stage: number }) {
-  return (
-    <div style={{ display: "flex", gap: 3 }}>
-      {STAGE_LABELS.map((label, i) => {
-        const filled = i < stage;
-        const current = i === stage - 1;
-        return (
-          <div key={label} style={{ flex: 1, position: "relative" }}>
-            <div style={{
-              height: 4, borderRadius: 2,
-              background: filled ? (current ? "#1e4080" : "#b8830e") : "#e2ddd4",
-            }} />
-            {current && (
-              <div style={{
-                position: "absolute", top: 7, left: "50%", transform: "translateX(-50%)",
-                fontSize: 7.5, fontWeight: 700, color: "#1e4080",
-                letterSpacing: "0.04em", textTransform: "uppercase",
-                whiteSpace: "nowrap", fontFamily: "var(--font-dm-sans)",
-              }}>
-                {STAGE_LABELS[i]}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// Compact "430K+" style formatting for the live bill-count stat.
-function formatCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M+`;
-  if (n >= 1_000) return `${Math.floor(n / 1_000)}K+`;
-  return `${n}`;
-}
-
-// Shared scroll-reveal treatment for homepage sections below the hero — the
-// hero animates on mount, everything after fades/lifts in as it scrolls into
-// view so the page feels alive rather than a single static screen.
-const REVEAL = {
-  initial: { opacity: 0, y: 22 },
-  whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true, margin: "-60px" },
-  transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as const },
-};
-function reveal(delay = 0) {
-  return { ...REVEAL, transition: { ...REVEAL.transition, delay } };
-}
-
-function FeaturedBillCard({ bill, index }: { bill: Bill; index: number }) {
-  const router = useRouter();
-  const isNew = bill.urgency === "new";
-  const isUrgent = bill.urgency === "urgent";
-
-  return (
-    <motion.div
-      {...reveal(index * 0.08)}
-      whileHover={{ y: -3, boxShadow: "0 8px 30px rgba(13,31,60,0.12)", transition: { duration: 0.18 } }}
-      onClick={() => router.push(`/bills`)}
-      style={{
-        background: "white", borderRadius: 14, padding: "18px 20px",
-        border: "1.5px solid #e6e2d8", cursor: "pointer",
-        boxShadow: "0 2px 8px rgba(13,31,60,0.06)", transition: "box-shadow 0.18s",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{
-            fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 5,
-            background: "#0d1f3c", color: "white", letterSpacing: "0.04em",
-          }}>
-            {bill.type} {bill.number}
-          </span>
-          <span style={{ fontSize: 11, color: "#7a8699" }}>
-            {bill.type.startsWith("S") ? "Senate" : "House"}
-          </span>
-        </div>
-        {(isNew || isUrgent) && (
-          <span style={{
-            fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 5,
-            background: isUrgent ? "#fef2f2" : "#f0fdf4",
-            color: isUrgent ? "#b91c1c" : "#15803d",
-            border: `1px solid ${isUrgent ? "#fca5a5" : "#86efac"}`,
-            letterSpacing: "0.04em",
-          }}>
-            ✦ {isUrgent ? "URGENT" : "NEW"}
-          </span>
-        )}
-      </div>
-      <p style={{
-        fontSize: 13.5, fontWeight: 700, color: "#0d1f3c", lineHeight: 1.45,
-        marginBottom: 14, fontFamily: "var(--font-dm-sans)",
-      }}>
-        {bill.title}
-      </p>
-      <div style={{ marginBottom: 10 }}>
-        <MiniStageBar stage={bill.stage ?? 1} />
-      </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
-        <span style={{ fontSize: 11, color: "#7a8699", fontFamily: "var(--font-dm-sans)" }}>
-          Last action: {bill.latestActionDate || "—"}
-        </span>
-        <span style={{
-          fontSize: 11, fontWeight: 700, color: "#1e4080",
-          fontFamily: "var(--font-dm-sans)", display: "flex", alignItems: "center", gap: 3,
-        }}>
-          Take Action <ChevronRight size={12} strokeWidth={2.5} />
-        </span>
-      </div>
-    </motion.div>
-  );
-}
+import { DEMO_MISSION } from "@/features/missions/demo-data";
+import { joinCodeSchema } from "@/features/missions/schemas";
 
 export default function LandingPage() {
   const router = useRouter();
-  const isMobile = useIsMobile();
-  const [zip, setZip] = useState("");
+  const reduceMotion = useReducedMotion();
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  async function handleZip(e: React.FormEvent) {
-    e.preventDefault();
-    if (!/^\d{5}$/.test(zip.trim())) { setError("Enter a valid 5-digit ZIP code."); return; }
-    setError("");
-    setLoading(true);
-    const d = await postJSON<unknown>("/api/reps", { zip: zip.trim() });
-    if (!d) {
-      setError("Couldn't look up that ZIP. Please try again.");
-      setLoading(false);
-      return;
-    }
-    sessionStorage.setItem("civicspark_reps", JSON.stringify(d));
-    router.push(`/representatives?zip=${zip.trim()}`);
-    setLoading(false);
+  function join(event: React.FormEvent) {
+    event.preventDefault();
+    const parsed = joinCodeSchema.safeParse(code);
+    if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
+    router.push(`/mission/${parsed.data}`);
   }
 
-  // Pull the latest real bills from Congress.gov so the homepage showcase is
-  // genuinely live. MOCK_BILLS act only as a graceful fallback if the API is
-  // unreachable, so judges never see a blank section.
-  const [featured, setFeatured] = useState<Bill[]>(() => MOCK_BILLS.slice(0, 4));
-  // Live total from Congress.gov's pagination metadata, shown as a hero stat
-  // so the "live data" claim is backed by a real, current number rather than
-  // a hardcoded one.
-  const [totalBills, setTotalBills] = useState<number | null>(null);
+  return <div className="home-shell"><Navbar /><main id="main-content">
+    <section className="home-hero">
+      <div className="home-grid-lines" aria-hidden="true" />
+      <motion.div className="home-hero-copy" initial={reduceMotion ? false : { opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .65 }}>
+        <div className="home-kicker"><span /> Built for classrooms · Powered by the official record</div>
+        <h1>Don’t just learn<br />about democracy.<br /><em>Enter the conversation.</em></h1>
+        <p>CivicSpark turns one real bill into a guided investigation—and each student’s informed perspective into a letter Congress can read.</p>
+        <form className="home-join" onSubmit={join}>
+          <label htmlFor="home-code">Join your class mission</label>
+          <div><input id="home-code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} maxLength={6} placeholder="ENTER CODE" /><button>Begin <ArrowRight size={18} /></button></div>
+          {error && <span role="alert">{error}</span>}
+        </form>
+        <div className="home-demo-line"><span>No code?</span><Link href={`/mission/${DEMO_MISSION.code}`}>Try the live sample mission <ArrowRight size={13} /></Link></div>
+      </motion.div>
 
-  useEffect(() => {
-    let active = true;
-    fetchJSON<{ bills?: Bill[]; total?: number }>("/api/bills/all").then(d => {
-      if (!active || !d) return;
-      if (Array.isArray(d.bills) && d.bills.length >= 4) setFeatured(d.bills.slice(0, 4));
-      if (typeof d.total === "number" && d.total > 0) setTotalBills(d.total);
-    });
-    return () => { active = false; };
-  }, []);
+      <motion.div className="home-story-card" initial={reduceMotion ? false : { opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: .7, delay: .12 }}>
+        <div className="home-card-top"><span>Mission 01</span><i>10 min</i></div>
+        <div className="home-card-orbit" aria-hidden="true"><span /><span /><b>YOUR<br />VOICE</b></div>
+        <div className="home-card-content"><small>LIVE SENATE BILL · DIGITAL LIFE</small><h2>{DEMO_MISSION.title}</h2><p>Follow the evidence. Challenge your first take. Write from experience.</p><Link href={`/mission/${DEMO_MISSION.code}`}>Open mission <ArrowRight size={16} /></Link></div>
+        <div className="home-card-steps"><span className="active" /><span /><span /><span /><span /><span /><span /></div>
+      </motion.div>
+    </section>
 
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <Navbar />
+    <section className="home-promise">
+      <div><span>One classroom loop</span><h2>From distant policy<br />to a voice that matters.</h2></div>
+      <ol>
+        <li><span>01</span><BookOpen size={22} /><div><strong>Investigate</strong><p>Students examine official sources, not secondhand talking points.</p></div></li>
+        <li><span>02</span><Sparkles size={22} /><div><strong>Deliberate</strong><p>They weigh competing arguments and explain what shaped their view.</p></div></li>
+        <li><span>03</span><GraduationCap size={22} /><div><strong>Act together</strong><p>A teacher reviews each letter and prepares one credible class packet.</p></div></li>
+      </ol>
+    </section>
 
-      <main id="main-content">
-      {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <section style={{
-        background: "linear-gradient(160deg, #060e1f 0%, #0d1f3c 60%, #0f2548 100%)",
-        padding: isMobile ? "48px 20px 56px" : "72px 28px 80px",
-        position: "relative", overflow: "hidden",
-      }}>
-        {/* Subtle film-grain texture — breaks up the flat gradient for a more
-            tactile, printed-document feel consistent with the civic identity. */}
-        <div aria-hidden="true" style={{
-          position: "absolute", inset: 0, opacity: 0.5, mixBlendMode: "overlay", pointerEvents: "none",
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E\")",
-        }} />
-        {/* Ambient orbs */}
-        <div style={{
-          position: "absolute", top: -100, right: -100, width: 500, height: 500,
-          borderRadius: "50%", background: "radial-gradient(circle, rgba(184,131,14,0.08) 0%, transparent 70%)",
-          pointerEvents: "none",
-        }} />
-        <div style={{
-          position: "absolute", bottom: -80, left: -80, width: 400, height: 400,
-          borderRadius: "50%", background: "radial-gradient(circle, rgba(30,64,128,0.15) 0%, transparent 70%)",
-          pointerEvents: "none",
-        }} />
-
-        <div style={{
-          maxWidth: 1200, margin: "0 auto", position: "relative", zIndex: 1,
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "1fr auto",
-          gap: isMobile ? 40 : 64,
-          alignItems: "center",
-        }}>
-          {/* Left copy */}
-          <motion.div
-            initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-          >
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 12px",
-              borderRadius: 99, background: "rgba(184,131,14,0.12)", border: "1px solid rgba(184,131,14,0.3)",
-              marginBottom: 24,
-            }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e",
-                boxShadow: "0 0 0 2px rgba(34,197,94,0.3)" }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#c9a84c",
-                letterSpacing: "0.08em", fontFamily: "var(--font-dm-sans)", textTransform: "uppercase" }}>
-                Live from Congress.gov
-              </span>
-            </div>
-
-            <h1 style={{
-              fontFamily: "var(--font-playfair)", fontSize: isMobile ? "clamp(34px, 8vw, 48px)" : "clamp(40px, 5vw, 64px)",
-              fontWeight: 700, color: "white", lineHeight: 1.1, marginBottom: 16,
-            }}>
-              Know what Congress<br />is voting on.
-            </h1>
-            <h2 style={{
-              fontFamily: "var(--font-playfair)",
-              fontSize: isMobile ? "clamp(30px, 7vw, 44px)" : "clamp(36px, 4.5vw, 58px)",
-              fontWeight: 700, color: "#b8830e", lineHeight: 1.1, marginBottom: 28,
-              fontStyle: "italic",
-            }}>
-              Do something about it.
-            </h2>
-            <p style={{
-              fontSize: isMobile ? 15 : 17, color: "#8da4c4", lineHeight: 1.7,
-              maxWidth: 480, fontFamily: "var(--font-dm-sans)", marginBottom: 32,
-            }}>
-              CivicSpark pulls live bills from Congress.gov, explains them in plain English
-              with AI, and connects you to the three federal representatives who vote on
-              your behalf — all in under 60 seconds.
-            </p>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-              {["Nonpartisan", "Live Congress.gov data", "AI-powered summaries"].map(label => (
-                <div key={label} style={{ display: "flex", alignItems: "center", gap: 7,
-                  fontSize: 13, color: "#8da4c4", fontFamily: "var(--font-dm-sans)", fontWeight: 500 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#b8830e", flexShrink: 0 }} />
-                  {label}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* Right: ZIP card */}
-          <motion.div
-            initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.15, ease: "easeOut" }}
-            style={{
-              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)",
-              borderRadius: 20, padding: "32px 28px",
-              width: isMobile ? "100%" : undefined,
-              minWidth: isMobile ? undefined : 340,
-              maxWidth: isMobile ? undefined : 380,
-              backdropFilter: "blur(12px)",
-            }}
-          >
-            <h3 style={{ fontFamily: "var(--font-playfair)", fontSize: 22,
-              fontWeight: 700, color: "white", marginBottom: 6 }}>
-              Find your representatives
-            </h3>
-            <p style={{ fontSize: 13, color: "#6b7e9c", marginBottom: 24,
-              fontFamily: "var(--font-dm-sans)", lineHeight: 1.6 }}>
-              Your House rep and two Senators, identified by ZIP.
-            </p>
-
-            <form onSubmit={handleZip} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ position: "relative" }}>
-                <div style={{
-                  position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-                  color: "#4b6b9e", pointerEvents: "none",
-                }}>
-                  <MapPin size={16} strokeWidth={1.8} />
-                </div>
-                <input
-                  type="text" inputMode="numeric" maxLength={5}
-                  aria-label="ZIP code"
-                  placeholder="e.g. 10001, 90210, 78701"
-                  value={zip}
-                  onChange={e => { setZip(e.target.value.replace(/\D/g, "")); setError(""); }}
-                  style={{
-                    width: "100%", paddingLeft: 42, paddingRight: 16, paddingTop: 13, paddingBottom: 13,
-                    fontSize: 15, borderRadius: 10, outline: "none",
-                    background: "rgba(255,255,255,0.07)", border: `1.5px solid ${error ? "#fca5a5" : "rgba(255,255,255,0.13)"}`,
-                    color: "white", fontFamily: "var(--font-dm-sans)",
-                    transition: "border-color 0.2s",
-                  }}
-                  onFocus={e => { e.target.style.borderColor = "rgba(184,131,14,0.6)"; }}
-                  onBlur={e => { e.target.style.borderColor = error ? "#fca5a5" : "rgba(255,255,255,0.13)"; }}
-                />
-              </div>
-              {error && <p style={{ color: "#fca5a5", fontSize: 12, margin: 0 }}>{error}</p>}
-              <motion.button
-                type="submit"
-                disabled={loading || zip.length < 5}
-                style={{
-                  padding: "13px 20px", borderRadius: 10, fontSize: 14, fontWeight: 700,
-                  border: "none", cursor: loading || zip.length < 5 ? "not-allowed" : "pointer",
-                  opacity: loading || zip.length < 5 ? 0.6 : 1,
-                  background: "linear-gradient(135deg, #b8830e, #d4a030)",
-                  color: "white", fontFamily: "var(--font-dm-sans)",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  boxShadow: "0 4px 16px rgba(184,131,14,0.35)",
-                }}
-                whileHover={zip.length === 5 ? { scale: 1.02 } : {}}
-                whileTap={{ scale: 0.98 }}
-              >
-                {loading ? "Looking up…" : <>Find My Representatives <ArrowRight size={16} strokeWidth={2.5} /></>}
-              </motion.button>
-            </form>
-
-            {/* Stats */}
-            <div style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-              gap: 1, marginTop: 24, background: "rgba(255,255,255,0.07)",
-              borderRadius: 10, overflow: "hidden",
-            }}>
-              {[
-                { n: "3", label: "federal reps" },
-                { n: totalBills != null ? formatCount(totalBills) : "50", label: totalBills != null ? "bills tracked" : "states" },
-                { n: "Free", label: "always" },
-              ].map(({ n, label }) => (
-                <div key={label} style={{
-                  padding: "14px 8px", textAlign: "center",
-                  background: "rgba(255,255,255,0.03)",
-                }}>
-                  <div style={{ fontFamily: "var(--font-playfair)", fontSize: 22,
-                    fontWeight: 700, color: "white", marginBottom: 2 }}>{n}</div>
-                  <div style={{ fontSize: 10.5, color: "#6b7e9c",
-                    fontFamily: "var(--font-dm-sans)", letterSpacing: "0.03em" }}>{label}</div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ── Trust bar ─────────────────────────────────────────────────────── */}
-      <div style={{ background: "#0d1f3c", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5, duration: 0.5 }} style={{
-          maxWidth: 1200, margin: "0 auto",
-          padding: isMobile ? "12px 20px" : "14px 28px",
-          display: "flex", gap: isMobile ? 16 : 32,
-          alignItems: "center", justifyContent: "center",
-          flexWrap: "wrap",
-        }}>
-          {[
-            { Icon: Shield, text: "100% nonpartisan — no political agenda" },
-            { Icon: Database, text: "Live data from Congress.gov API" },
-            { Icon: Zap, text: "AI summaries powered by Groq" },
-          ].map(({ Icon, text }) => (
-            <div key={text} style={{ display: "flex", alignItems: "center", gap: 8,
-              fontSize: 12, color: "#5b6e8c", fontFamily: "var(--font-dm-sans)", fontWeight: 500 }}>
-              <Icon size={13} strokeWidth={2} color="#b8830e" /> {text}
-            </div>
-          ))}
-        </motion.div>
+    <section className="home-trust">
+      <div className="home-trust-copy"><span>Designed for trust</span><h2>AI helps students think.<br />It never thinks for them.</h2><p>Every factual card links to the official record. Political positions are private and never scored. AI can organize a student’s words, but it cannot invent their experience.</p><div><span><ShieldCheck size={17} /> No student email or address</span><span><ExternalLink size={17} /> Citation on every factual claim</span><span><CheckCircle2 size={17} /> Teacher review before export</span></div></div>
+      <div className="home-source-stack">
+        {DEMO_MISSION.sources.map((source, index) => <a href={source.url} target="_blank" rel="noreferrer" key={source.id} style={{ transform: `translateY(${index * -5}px) rotate(${index % 2 ? 1 : -1}deg)` }}><span>Official source 0{index + 1}</span><strong>{source.label}</strong><p>{source.excerpt}</p><small>{source.publisher} <ExternalLink size={11} /></small></a>)}
       </div>
+    </section>
 
-      {/* ── Mission / origin narrative ────────────────────────────────────── */}
-      <section style={{ background: "#fbfaf7", padding: isMobile ? "44px 20px" : "64px 28px",
-        borderBottom: "1px solid #ece8df" }}>
-        <motion.div {...reveal()} style={{ maxWidth: 760, margin: "0 auto", textAlign: "center" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em",
-            textTransform: "uppercase", color: "#b8830e", marginBottom: 16,
-            fontFamily: "var(--font-dm-sans)" }}>
-            Why CivicSpark exists
-          </div>
-          <p style={{ fontFamily: "var(--font-playfair)",
-            fontSize: isMobile ? 21 : 27, lineHeight: 1.5, color: "#0d1f3c",
-            fontWeight: 500, margin: 0 }}>
-            Most people never learn how their own representatives vote — not because
-            they don&apos;t care, but because the information is buried in legislative
-            jargon and scattered across government websites.{" "}
-            <span style={{ color: "#b8830e", fontStyle: "italic" }}>
-              Democracy shouldn&apos;t require a law degree.
-            </span>
-          </p>
-          <p style={{ fontSize: isMobile ? 14 : 15.5, lineHeight: 1.75, color: "#5b6577",
-            fontFamily: "var(--font-dm-sans)", marginTop: 20, maxWidth: 620,
-            marginLeft: "auto", marginRight: "auto" }}>
-            CivicSpark turns any bill into plain English — in your language, read aloud
-            if you need it — shows you exactly how your reps voted, and helps you tell
-            them what you think. From confusion to action, in under a minute.
-          </p>
-
-          {/* Pillars */}
-          <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap",
-            gap: isMobile ? 14 : 28, marginTop: 32 }}>
-            {[
-              { Icon: BookOpen, label: "Understand", desc: "Plain-English AI summaries" },
-              { Icon: Globe, label: "Inclusive", desc: "6 languages + read-aloud" },
-              { Icon: Vote, label: "Hold accountable", desc: "See how your reps voted" },
-            ].map(({ Icon, label, desc }, i) => (
-              <motion.div key={label} {...reveal(0.12 + i * 0.08)}
-                style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left" }}>
-                <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
-                  background: "transparent", border: "1.5px solid #1e4080", display: "flex", alignItems: "center",
-                  justifyContent: "center" }}>
-                  <Icon size={17} strokeWidth={1.8} color="#1e4080" />
-                </div>
-                <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: "#0d1f3c",
-                    fontFamily: "var(--font-dm-sans)" }}>{label}</div>
-                  <div style={{ fontSize: 12, color: "#7a8699",
-                    fontFamily: "var(--font-dm-sans)" }}>{desc}</div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ── Featured bills ────────────────────────────────────────────────── */}
-      <section style={{ background: "#f4f2ee", padding: isMobile ? "40px 20px 56px" : "60px 28px 80px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <motion.div {...reveal()} style={{
-            display: "flex", alignItems: isMobile ? "flex-start" : "baseline",
-            flexDirection: isMobile ? "column" : "row",
-            justifyContent: "space-between", gap: 12, marginBottom: 28,
-          }}>
-            <div>
-              <h2 style={{ fontFamily: "var(--font-playfair)", fontSize: isMobile ? 24 : 30,
-                fontWeight: 700, color: "#0d1f3c", marginBottom: 6 }}>
-                Currently before the 119th Congress
-              </h2>
-              <p style={{ fontSize: 13.5, color: "#7a8699", fontFamily: "var(--font-dm-sans)" }}>
-                Live from Congress.gov{totalBills != null ? ` — ${totalBills.toLocaleString()} bills and counting` : " — real legislation, real stakes"}
-              </p>
-            </div>
-            <motion.a href="/bills" whileHover={{ x: 3 }} style={{
-              fontSize: 13, fontWeight: 700, color: "#1e4080",
-              textDecoration: "none", display: "flex", alignItems: "center", gap: 4,
-              fontFamily: "var(--font-dm-sans)", flexShrink: 0,
-            }}>
-              Browse all bills <ChevronRight size={14} strokeWidth={2.5} />
-            </motion.a>
-          </motion.div>
-
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: 16,
-          }}>
-            {featured.map((bill, i) => (
-              <FeaturedBillCard key={bill.id} bill={bill} index={i} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── How it works ──────────────────────────────────────────────────── */}
-      <section style={{ background: "white", padding: isMobile ? "48px 20px" : "64px 28px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <motion.h2 {...reveal()} style={{ fontFamily: "var(--font-playfair)", fontSize: isMobile ? 24 : 28,
-            fontWeight: 700, color: "#0d1f3c", textAlign: "center", marginBottom: 4 }}>
-            Your voice in Congress — made simple
-          </motion.h2>
-          <motion.p {...reveal(0.05)} style={{ fontSize: 12.5, color: "#b8830e", textAlign: "center", letterSpacing: "0.1em",
-            textTransform: "uppercase", fontFamily: "var(--font-dm-sans)", fontWeight: 700, marginBottom: 48 }}>
-            The path of a bill, made for you
-          </motion.p>
-
-          <div style={{ position: "relative" }}>
-            {!isMobile && (
-              <div aria-hidden="true" style={{
-                position: "absolute", top: 22, left: "16.6%", right: "16.6%", height: 2,
-                background: "repeating-linear-gradient(90deg, #d9c48f 0 7px, transparent 7px 14px)",
-              }} />
-            )}
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
-              gap: isMobile ? 22 : 32, position: "relative",
-            }}>
-              {[
-                { title: "Enter your ZIP", desc: "We identify your House representative and two Senators — the three people who vote on federal laws in your name." },
-                { title: "Explore live bills", desc: "Browse legislation from Congress.gov with AI-powered plain-English summaries, balanced perspectives, and pass likelihood scores." },
-                { title: "Take action", desc: "Generate a personalized letter or call script for any representative. Copy it, send it, and make your voice heard." },
-              ].map(({ title, desc }, i) => (
-                <motion.div key={title} {...reveal(i * 0.12)} style={{
-                  display: "flex", flexDirection: isMobile ? "row" : "column",
-                  alignItems: isMobile ? "flex-start" : "center",
-                  textAlign: isMobile ? "left" : "center", gap: isMobile ? 16 : 0,
-                }}>
-                  <div style={{
-                    width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
-                    background: "#0d1f3c", border: "2px solid #b8830e",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    marginBottom: isMobile ? 0 : 18,
-                  }}>
-                    <span style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic",
-                      fontWeight: 700, fontSize: 18, color: "white" }}>{i + 1}</span>
-                  </div>
-                  <div>
-                    <h3 style={{ fontFamily: "var(--font-playfair)", fontSize: 19,
-                      fontWeight: 700, color: "#0d1f3c", marginBottom: 8 }}>{title}</h3>
-                    <p style={{ fontSize: 13.5, color: "#7a8699", lineHeight: 1.7, maxWidth: isMobile ? undefined : 280,
-                      fontFamily: "var(--font-dm-sans)" }}>{desc}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-
-          {/* CTA */}
-          <motion.div {...reveal(0.15)} style={{ textAlign: "center", marginTop: 48 }}>
-            <motion.a href="/bills" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }} style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              padding: "13px 28px", borderRadius: 10, fontSize: 14, fontWeight: 700,
-              textDecoration: "none", background: "#0d1f3c", color: "white",
-              fontFamily: "var(--font-dm-sans)",
-            }}>
-              Browse Bills →
-            </motion.a>
-          </motion.div>
-        </div>
-      </section>
-      </main>
-
-      <Footer />
-    </div>
-  );
+    <section className="home-teacher-cta"><div><span><Users size={15} /> For educators</span><h2>Build tomorrow’s civic<br />conversation today.</h2><p>Select a live bill, generate a cited classroom draft, review student thinking, and export approved letters—without creating student accounts.</p></div><div><Link href="/teacher">Open teacher studio <ArrowRight size={17} /></Link><Link href="/bills">Explore Congress <ExternalLink size={15} /></Link></div></section>
+  </main><Footer /></div>;
 }

@@ -1,78 +1,59 @@
 # Congressional App Challenge — Submission Answers
 
-**App name:** CivicSpark
-**Live demo:** https://civicspark.vercel.app
-**Tagline:** From ZIP code to constituent letter in under a minute — nonpartisan, AI-assisted civic engagement.
+**App name:** CivicSpark Missions
+**Tagline:** Understand a real bill. Find your voice. Send Congress something worth reading.
 
-> These are drafts. The exact wording and character limits on the official Submittable form may differ slightly — paste these in and trim to fit. Each answer is written to map to the three CAC judging categories: (1) Understanding of Computer Programming Skills, (2) Quality of the Idea, and (3) Implementation of the Idea.
+> Draft copy. Replace bracketed pilot fields only after real data is collected, and trim to the official form limits.
 
----
+## What does your app do?
 
-## 1. What does your app do? / Describe your app.
+CivicSpark turns a real bill into a teacher-guided civic mission. A student joins with a short code and nickname—no student account—then moves through seven focused chapters: a relatable scenario, an initial opinion, official-source evidence, multiple perspectives, a knowledge check, personal reflection, and a letter to Congress.
 
-CivicSpark turns the intimidating process of engaging with Congress into something anyone can do in under a minute. You enter your ZIP code and the app identifies your House representative and two senators with live profile data — photo, party, and official contact info — pulled from the Congress.gov Members API.
+Every factual card and answer explanation links to a frozen official source. CivicSpark records how understanding and confidence change, but never rewards a political position. The student’s final letter can use only cited mission facts and the student’s own words.
 
-From there you can browse real legislation, fetched in real time from the Congress.gov REST API and sorted by latest activity. For any bill, CivicSpark uses a large language model (GPT-OSS-120B served via Groq) to generate:
+Teachers choose a bill and learning objective, generate a sourced draft once, edit it before publishing, review or return submissions, see anonymous class-level outcomes, and export approved letters as a polished congressional packet. The older bill and representative tools remain available in a secondary Explore Congress area.
 
-- a **plain-English summary** of what the bill actually does,
-- an **AI pass-likelihood estimate** with a rationale, based on the bill's legislative stage, policy area, sponsor history, and cosponsor count,
-- **three balanced arguments for and three against**, written to be strictly nonpartisan, and
-- a **ready-to-send constituent letter or phone-call script** addressed to your specific representative, reflecting your stated position and an optional personal note.
+## Why did you build it?
 
-You can also search the full text of legislation, star bills to a personal watchlist, and view each lawmaker's recently sponsored bills. Bill summaries can be translated into multiple languages or read aloud for accessibility, and for bills that have already come to a vote, CivicSpark shows the full roll-call record so you can see exactly how your own representative voted — real accountability, not just talking points. A dedicated My Bills dashboard tracks everything you've watched or acted on and turns it into a personal civic-impact record (letters sent, calls made), all stored locally in your browser. Everything works without creating an account.
+Young people are often taught the structure of government without experiencing what civic participation feels like. A broad bill browser can provide information, but information alone does not help a classroom evaluate evidence, discuss tradeoffs, or communicate a reasoned view.
 
----
+I built CivicSpark around a measurable transformation: a student begins with an instinct, checks it against primary sources, and ends with an informed message in their own voice. The teacher review step makes the action credible and safe while giving the class a real audience beyond a grade.
 
-## 2. Why did you decide to create this app? / What problem does it solve?
+## What was technically challenging?
 
-Most people my age — and most adults — have never contacted an elected official. Pew Research finds only about a quarter of Americans have ever reached out to a representative. It's not because people don't care; it's because the process feels opaque. Bills are written in dense legislative language, it's hard to know who your representatives even are, and writing a letter to Congress feels like a formal task you need to be an expert to do.
+The hardest problem was making generated educational content trustworthy. CivicSpark first captures Congress.gov metadata, actions, summaries, and official text references. AI output must match a strict schema, and every evidence claim and quiz explanation must cite an ID from that captured source set. Output with missing or invented citations is rejected. The mission is generated once and frozen, so every student sees the same reviewed material even if an upstream service is temporarily unavailable.
 
-I built CivicSpark to remove every one of those barriers. It tells you who represents you, translates legislation into language anyone can understand, shows balanced perspectives so you can make up your own mind, and then drafts the actual letter for you. The goal is to make the distance between "I have an opinion" and "my representative heard it" as short as possible — while staying rigorously nonpartisan so the tool informs rather than persuades.
+Privacy required a second layer of engineering. Supabase row-level security isolates each teacher’s missions. Students receive mission-scoped sessions backed by hashed browser tokens, while sensitive service credentials remain server-only. The database schema deliberately has no fields for student email, address, ZIP code, or school.
 
----
+The student experience also had to survive refreshes and weak connections. Responses autosave chapter by chapter, resume locally in the demo, and use idempotent server-oriented data shapes for production persistence.
 
-## 3. What was the most challenging part of building your app? / What did you learn?
+## Languages, tools, and frameworks
 
-The hardest part was making AI output trustworthy and fast at the same time. Each bill needs several distinct AI generations — a summary, a pass-likelihood score, balanced pros and cons, and a personalized letter — and running them one after another felt slow. I learned to fire them in parallel using `Promise.allSettled`, so a slow or failed generation never blocks the others, and the page progressively fills in.
+- TypeScript in strict mode
+- Next.js 16 App Router and React 19
+- Supabase Postgres, Auth magic links, and row-level security
+- Congress.gov official data and source links
+- Groq structured generation with Zod validation
+- PDFKit for congressional packet export
+- Framer Motion as progressive enhancement
+- Vitest for mission logic and citation tests
+- Vercel for deployment
 
-I also had to design the prompts carefully to keep the model genuinely nonpartisan: it always produces an equal number of arguments for and against, and the letter reflects the user's position rather than the model's. On the data side, integrating the live Congress.gov REST API meant handling rate limits, missing fields, and inconsistent formats, so I built graceful fallbacks and inference logic (for example, deducing a bill's legislative stage from its latest action). The biggest lesson was that a good AI feature is mostly engineering *around* the model — caching, parallelism, validation, and fallbacks — not just the prompt itself.
+## What did you learn?
 
----
+I learned that responsible AI is mostly system design around the model: constraining its inputs, validating its output, preserving provenance, and failing safely. I also learned to model privacy by asking what data the product does not need, rather than collecting everything and promising to protect it later.
 
-## 4. What programming languages, tools, and frameworks did you use?
+Most importantly, I learned to define impact as a learning outcome. CivicSpark measures completion, knowledge, confidence change, and teacher-approved letters—not clicks, streaks, or agreement with a political viewpoint.
 
-- **TypeScript** (strict mode) as the primary language, end to end
-- **Next.js 16** (App Router) with React 19 — server components, API routes, and the Turbopack bundler
-- **Congress.gov REST API v3** for live bill data, member lookup, sponsored legislation, and full-text search
-- **Groq inference API running an open-weight GPT-OSS-120B model** for all generative features
-- **Framer Motion** for animations and transitions
-- **Lucide React** for iconography
-- **Vercel** for production deployment, edge CDN, and per-commit preview builds
-- Browser **localStorage / sessionStorage** for the watchlist and saved representatives (no account or database required)
+## What should judges know?
 
----
+CivicSpark is nonpartisan by construction. Supporting, opposing, and factual material are labeled; all claims trace to official sources; teachers approve content before students see it; and student position is never part of a score.
 
-## 5. What new skills or concepts did you learn while building this?
+The product has been built for a real classroom pilot. After the pilot, this answer will include only verified results: **[participants] students, [completion rate]% completion, [knowledge change]-point average knowledge change, and [approved letters] teacher-approved letters**, plus permissioned anonymous quotes.
 
-- Designing **multi-call AI pipelines** that run in parallel and degrade gracefully when one call fails
-- **Prompt engineering for neutrality** — forcing balanced, symmetric output rather than letting the model take a side
-- Working with a real **government REST API**, including pagination, rate limiting, and normalizing messy real-world data
-- Building a **fully responsive UI** with a mobile filter drawer, hamburger navigation, and layouts that adapt from desktop to phone
-- **Server components and API routes** in the Next.js App Router, and deploying a full-stack TypeScript app to the edge on Vercel
-- Building **accessibility features that are genuinely useful, not checkbox compliance** — text-to-speech read-aloud via the Web Speech API, keyboard focus trapping and `aria-live` announcements in the action drawer, and on-demand summary translation
-- Designing a **local-first accountability feature** — matching roll-call vote records to a user's own representative, and computing an honest, per-browser civic-impact tally instead of a fabricated aggregate number
+## Short fields
 
----
-
-## 6. Is there anything else you'd like the judges to know?
-
-CivicSpark is intentionally **nonpartisan by design**, not just by disclaimer: every bill shows an equal number of arguments for and against, AI-drafted letters reflect *your* position rather than any viewpoint of mine, and there's no tracking, no account, and no political messaging anywhere in the app. It runs entirely on live, official data from Congress.gov, so what you see is what's actually happening in the 119th Congress right now. My hope is that a student, a first-time voter, or anyone who's never contacted Congress could open CivicSpark and feel, for the first time, that participating is genuinely within reach.
-
----
-
-## Quick reference (for short-answer fields)
-
-- **One-sentence description:** CivicSpark uses live Congress.gov data and AI to help anyone understand legislation and contact their representatives — nonpartisan, account-free, in under a minute.
+- **One sentence:** CivicSpark guides students from official evidence about a real bill to a teacher-reviewed personal letter for Congress.
 - **Primary language:** TypeScript
-- **Platform:** Web (responsive, works on desktop and mobile)
-- **Live URL:** https://civicspark.vercel.app
+- **Platform:** Responsive web application
+- **Demo join code:** SPARK6

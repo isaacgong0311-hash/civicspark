@@ -303,22 +303,24 @@ function RepresentativesContent() {
   const [searched, setSearched] = useState(false);
 
   useEffect(() => {
-    if (initialZip) {
-      fetchReps(initialZip);
-    } else {
-      try {
-        const saved = sessionStorage.getItem("civicspark_reps");
-        if (saved) {
-          const d = JSON.parse(saved);
-          setReps(d.representatives ?? []);
-          setState(d.state ?? "");
-          setZip(d.zip ?? "");
-          setInput(d.zip ?? "");
-          setLive(d.live ?? false);
-          setSearched(true);
-        }
-      } catch { /* ignore */ }
-    }
+    queueMicrotask(() => {
+      if (initialZip) {
+        void fetchReps(initialZip);
+      } else {
+        try {
+          const saved = sessionStorage.getItem("civicspark_reps");
+          if (saved) {
+            const d = JSON.parse(saved);
+            setReps(d.representatives ?? []);
+            setState(d.state ?? "");
+            setZip(d.zip ?? "");
+            setInput(d.zip ?? "");
+            setLive(d.live ?? false);
+            setSearched(true);
+          }
+        } catch { /* ignore */ }
+      }
+    });
   }, [initialZip]);
 
   async function fetchReps(z: string) {

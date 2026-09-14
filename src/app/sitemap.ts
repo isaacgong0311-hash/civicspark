@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 const BASE_URL = "https://civicspark.vercel.app";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const routes = ["", "/bills", "/representatives", "/my-bills", "/how-it-works"];
+  const routes = ["", "/mission/SPARK6", "/teacher", "/bills", "/representatives", "/how-it-works"];
   return routes.map(path => ({
     url: `${BASE_URL}${path}`,
     lastModified: new Date(),
